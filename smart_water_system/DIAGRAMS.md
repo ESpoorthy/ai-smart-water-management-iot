@@ -1,0 +1,423 @@
+# System Diagrams
+
+## 1. High-Level System Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PHYSICAL LAYER                            │
+│                                                               │
+│  Water Distribution Network                                  │
+│  ├── Pipes                                                   │
+│  ├── Valves                                                  │
+│  ├── Pumps                                                   │
+│  └── Storage Tanks                                           │
+│                                                               │
+│  Sensors Installed:                                          │
+│  • Flow meters at key junctions                             │
+│  • Pressure sensors throughout network                       │
+│  • Water quality sensors at treatment points                │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    EDGE LAYER                                │
+│                                                               │
+│  ESP32/Arduino Microcontrollers                              │
+│  ├── Read sensor data every 5 seconds                       │
+│  ├── Local data validation                                   │
+│  ├── WiFi connectivity                                       │
+│  └── HTTP POST to cloud/server                              │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    APPLICATION LAYER                         │
+│                                                               │
+│  Backend (FastAPI)                                           │
+│  ├── REST API endpoints                                      │
+│  ├── Data validation & storage                              │
+│  └── Real-time data serving                                 │
+│                                                               │
+│  Database (SQLite)                                           │
+│  └── Time-series sensor data                                │
+│                                                               │
+│  AI/ML Engine                                                │
+│  ├── Leak Detection (Isolation Forest)                      │
+│  └── Demand Forecasting (LSTM)                              │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    PRESENTATION LAYER                        │
+│                                                               │
+│  Web Dashboard (Streamlit)                                   │
+│  ├── Real-time monitoring                                    │
+│  ├── Interactive charts                                      │
+│  ├── Alert notifications                                     │
+│  └── AI model management                                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 2. Data Flow Sequence
+
+```
+┌──────────┐
+│  Sensor  │
+└────┬─────┘
+     │ 1. Measure
+     │    (Flow, Pressure, pH, etc.)
+     ▼
+┌──────────┐
+│   MCU    │
+│ (ESP32)  │
+└────┬─────┘
+     │ 2. Read & Package
+     │    JSON: {"flow": 15.2, ...}
+     ▼
+┌──────────┐
+│   WiFi   │
+└────┬─────┘
+     │ 3. HTTP POST
+     │    /api/sensor-data
+     ▼
+┌──────────┐
+│ FastAPI  │
+│ Backend  │
+└────┬─────┘
+     │ 4. Validate
+     │    (Pydantic)
+     ▼
+┌──────────┐
+│  SQLite  │
+│ Database │
+└────┬─────┘
+     │ 5. Store
+     │    INSERT INTO sensor_data
+     ▼
+┌──────────┐
+│ AI Model │
+│ Analysis │
+└────┬─────┘
+     │ 6. Process
+     │    - Detect anomalies
+     │    - Generate forecasts
+     ▼
+┌──────────┐
+│Dashboard │
+│ (Query)  │
+└────┬─────┘
+     │ 7. Visualize
+     │    - Charts
+     │    - Alerts
+     ▼
+┌──────────┐
+│   User   │
+└──────────┘
+```
+
+## 3. Leak Detection Algorithm Flow
+
+```
+┌─────────────────┐
+│ Historical Data │
+│ (Normal Ops)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Train Isolation │
+│ Forest Model    │
+│                 │
+│ Features:       │
+│ • Flow rate     │
+│ • Pressure      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Model Trained  │
+│  (Saved)        │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  New Reading    │
+│  Arrives        │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Predict        │
+│  Anomaly Score  │
+└────────┬────────┘
+         │
+         ▼
+    ┌────┴────┐
+    │ Score   │
+    │ < -0.5? │
+    └────┬────┘
+         │
+    ┌────┴────┐
+    │         │
+   YES       NO
+    │         │
+    ▼         ▼
+┌────────┐ ┌────────┐
+│ ALERT  │ │ Normal │
+│ Leak!  │ │ Status │
+└────────┘ └────────┘
+```
+
+## 4. LSTM Forecasting Architecture
+
+```
+Input Sequence (12 timesteps)
+[t-11, t-10, ..., t-1, t]
+Each timestep: [flow, temperature]
+         │
+         ▼
+┌─────────────────┐
+│  Input Layer    │
+│  Shape: (12, 2) │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  LSTM Layer 1   │
+│  50 units       │
+│  return_seq=True│
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Dropout 0.2    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  LSTM Layer 2   │
+│  50 units       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Dropout 0.2    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Dense Layer    │
+│  25 units       │
+│  ReLU           │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Output Layer   │
+│  1 unit         │
+│  (Predicted     │
+│   flow at t+1)  │
+└─────────────────┘
+```
+
+## 5. Alert System Logic
+
+```
+┌─────────────────┐
+│  New Reading    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Check Thresholds               │
+│                                  │
+│  pH < 6 or pH > 8?              │
+│  Turbidity > 5 NTU?             │
+│  Flow drop > 40%?               │
+│  Pressure drop > 30%?           │
+└────────┬────────────────────────┘
+         │
+    ┌────┴────┐
+    │ Alert?  │
+    └────┬────┘
+         │
+    ┌────┴────┐
+    │         │
+   YES       NO
+    │         │
+    ▼         ▼
+┌────────┐ ┌────────┐
+│Generate│ │Continue│
+│Alert   │ │Monitor │
+└───┬────┘ └────────┘
+    │
+    ▼
+┌────────────────┐
+│ Run AI Model   │
+│ Leak Detection │
+└───┬────────────┘
+    │
+    ▼
+┌────────────────┐
+│ Anomaly?       │
+└───┬────────────┘
+    │
+   YES
+    │
+    ▼
+┌────────────────┐
+│ Add AI Alert   │
+└───┬────────────┘
+    │
+    ▼
+┌────────────────┐
+│ Display in     │
+│ Dashboard      │
+└────────────────┘
+```
+
+## 6. Hardware Wiring Diagram
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      ESP32 Board                         │
+│                                                           │
+│  GPIO 4  ──────────────────────┐                        │
+│  GPIO 34 ──────────────────┐   │                        │
+│  GPIO 35 ──────────────┐   │   │                        │
+│  GPIO 32 ──────────┐   │   │   │                        │
+│  GPIO 33 ──────┐   │   │   │   │                        │
+│  3.3V  ────┐   │   │   │   │   │                        │
+│  GND   ──┐ │   │   │   │   │   │                        │
+└──────────┼─┼───┼───┼───┼───┼───┼────────────────────────┘
+           │ │   │   │   │   │   │
+           │ │   │   │   │   │   │
+           │ │   │   │   │   │   └──> Flow Sensor (Signal)
+           │ │   │   │   │   │
+           │ │   │   │   │   └──────> Pressure Sensor (Analog)
+           │ │   │   │   │
+           │ │   │   │   └──────────> pH Sensor (Analog)
+           │ │   │   │
+           │ │   │   └──────────────> Turbidity Sensor (Analog)
+           │ │   │
+           │ │   └──────────────────> Temperature Sensor (Data)
+           │ │
+           │ └──────────────────────> All Sensors VCC (3.3V)
+           │
+           └────────────────────────> All Sensors GND
+
+Sensor Details:
+┌──────────────┬─────────────┬──────────────┬─────────────┐
+│ Sensor       │ Type        │ Output       │ Range       │
+├──────────────┼─────────────┼──────────────┼─────────────┤
+│ Flow         │ YF-S201     │ Digital Pulse│ 1-30 L/min  │
+│ Pressure     │ Analog      │ 0-3.3V       │ 0-5 bar     │
+│ pH           │ Analog      │ 0-3.3V       │ 0-14 pH     │
+│ Turbidity    │ Analog      │ 0-3.3V       │ 0-1000 NTU  │
+│ Temperature  │ DS18B20     │ 1-Wire       │ -55-125°C   │
+└──────────────┴─────────────┴──────────────┴─────────────┘
+```
+
+## 7. Deployment Architecture
+
+### Development (Current)
+```
+┌──────────────────────────────────────┐
+│         Local Machine                 │
+│                                       │
+│  ┌────────────┐  ┌────────────┐     │
+│  │  Backend   │  │ Simulator  │     │
+│  │  :8000     │  │            │     │
+│  └────────────┘  └────────────┘     │
+│                                       │
+│  ┌────────────┐  ┌────────────┐     │
+│  │ Dashboard  │  │  Database  │     │
+│  │  :8501     │  │  SQLite    │     │
+│  └────────────┘  └────────────┘     │
+└──────────────────────────────────────┘
+```
+
+### Production (Future)
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Cloud Platform                        │
+│                   (AWS / Azure / GCP)                    │
+│                                                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │ Load Balancer│  │  API Gateway │  │   CDN        │ │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │
+│         │                  │                  │          │
+│  ┌──────▼───────┐  ┌──────▼───────┐  ┌──────▼───────┐ │
+│  │ Web Server   │  │ API Servers  │  │  Dashboard   │ │
+│  │ (Nginx)      │  │ (FastAPI)    │  │  (Streamlit) │ │
+│  └──────────────┘  └──────┬───────┘  └──────────────┘ │
+│                            │                             │
+│                     ┌──────▼───────┐                    │
+│                     │  Database    │                    │
+│                     │ (PostgreSQL/ │                    │
+│                     │ TimescaleDB) │                    │
+│                     └──────────────┘                    │
+│                                                           │
+│  ┌──────────────┐  ┌──────────────┐                    │
+│  │ ML Models    │  │  IoT Hub     │                    │
+│  │ (SageMaker)  │  │ (IoT Core)   │                    │
+│  └──────────────┘  └──────────────┘                    │
+└─────────────────────────────────────────────────────────┘
+                            ▲
+                            │
+                    ┌───────┴────────┐
+                    │  Edge Devices  │
+                    │  (ESP32/Arduino)│
+                    └────────────────┘
+```
+
+## 8. State Machine - Event Simulation
+
+```
+┌─────────────┐
+│   NORMAL    │
+│  Operation  │
+└──────┬──────┘
+       │
+       │ Random trigger (2%)
+       ▼
+┌─────────────┐
+│    LEAK     │
+│   Active    │
+│             │
+│ • Flow ↓60% │
+│ • Press ↓50%│
+└──────┬──────┘
+       │
+       │ Duration: 20-40 readings
+       ▼
+┌─────────────┐
+│  RECOVERY   │
+│             │
+│ Return to   │
+│ Normal      │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   NORMAL    │
+└──────┬──────┘
+       │
+       │ Random trigger (1.5%)
+       ▼
+┌─────────────┐
+│CONTAMINATION│
+│   Active    │
+│             │
+│ • Turb ↑350%│
+│ • pH ↑2.0   │
+└──────┬──────┘
+       │
+       │ Duration: 15-30 readings
+       ▼
+┌─────────────┐
+│  RECOVERY   │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   NORMAL    │
+└─────────────┘
+```
