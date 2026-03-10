@@ -1,0 +1,2 @@
+# This file ensures the database directory is tracked by git
+# The actual database file (water.db) is ignored via .gitignore
