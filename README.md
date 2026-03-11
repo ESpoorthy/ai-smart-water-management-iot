@@ -433,7 +433,7 @@ smart_water_system/
 
 ## License
 
-MIT License - Free for academic, research, and commercial use
+Apache License Version 2.0 - Free for academic, research, and commercial use
 
 ---
 
