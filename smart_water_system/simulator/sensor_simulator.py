@@ -59,13 +59,17 @@ class WaterSensorSimulator:
             if random.random() < 0.02:
                 self.leak_active = True
                 self.event_duration = random.randint(20, 40)  # 20-40 readings
-                print("\n🚨 LEAK EVENT TRIGGERED!")
+                print("\n" + "=" * 70)
+                print("[EVENT] LEAK EVENT TRIGGERED")
+                print("=" * 70)
             
             # 1.5% chance of contamination
             elif random.random() < 0.015:
                 self.contamination_active = True
                 self.event_duration = random.randint(15, 30)
-                print("\n⚠️  CONTAMINATION EVENT TRIGGERED!")
+                print("\n" + "=" * 70)
+                print("[EVENT] CONTAMINATION EVENT TRIGGERED")
+                print("=" * 70)
         
         # Countdown event duration
         if self.event_duration > 0:
@@ -73,7 +77,9 @@ class WaterSensorSimulator:
             if self.event_duration == 0:
                 self.leak_active = False
                 self.contamination_active = False
-                print("\n✅ Event resolved - returning to normal")
+                print("\n" + "=" * 70)
+                print("[EVENT] Event resolved - returning to normal")
+                print("=" * 70)
     
     def get_sensor_reading(self):
         """Get current sensor reading with possible events"""
@@ -103,10 +109,12 @@ class WaterSensorSimulator:
     
     def run(self, interval=5):
         """Run continuous simulation"""
-        print("🌊 Smart Water Management System - Sensor Simulator")
-        print(f"📡 Sending data to: {self.api_url}")
-        print(f"⏱️  Interval: {interval} seconds")
-        print("=" * 60)
+        print("=" * 70)
+        print("SMART WATER MANAGEMENT SYSTEM - Sensor Simulator")
+        print("=" * 70)
+        print(f"API Endpoint: {self.api_url}")
+        print(f"Data Interval: {interval} seconds")
+        print("=" * 70)
         
         reading_count = 0
         
@@ -122,24 +130,26 @@ class WaterSensorSimulator:
                 success = self.send_data(data)
                 
                 reading_count += 1
-                status = "✓" if success else "✗"
+                status = "[OK]" if success else "[FAIL]"
                 
                 # Display reading
-                print(f"\n[{reading_count}] {datetime.now().strftime('%H:%M:%S')} {status}")
+                print(f"\n[Reading {reading_count}] {datetime.now().strftime('%H:%M:%S')} {status}")
                 print(f"  Flow: {data['flow']:.2f} L/min | Pressure: {data['pressure']:.2f} bar")
                 print(f"  pH: {data['ph']:.2f} | Turbidity: {data['turbidity']:.2f} NTU")
                 print(f"  Temperature: {data['temperature']:.2f}°C")
                 
                 if self.leak_active:
-                    print("  🚨 LEAK DETECTED")
+                    print("  [ALERT] LEAK DETECTED")
                 if self.contamination_active:
-                    print("  ⚠️  CONTAMINATION DETECTED")
+                    print("  [ALERT] CONTAMINATION DETECTED")
                 
                 time.sleep(interval)
                 
         except KeyboardInterrupt:
-            print("\n\n🛑 Simulator stopped by user")
+            print("\n" + "=" * 70)
+            print("Simulator stopped by user")
             print(f"Total readings sent: {reading_count}")
+            print("=" * 70)
 
 if __name__ == "__main__":
     simulator = WaterSensorSimulator()
