@@ -1,16 +1,18 @@
 """
-Streamlit Dashboard for Smart Water Management System
-Real-time monitoring, analytics, and alerts
+Complete Enhanced Interactive Dashboard for Smart Water Management System
+Crystal-clear visualization with colorful, user-friendly interface
+Based on research paper requirements
 """
 import streamlit as st
 import pandas as pd
 import sqlite3
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 import os
 import numpy as np
+from plotly.subplots import make_subplots
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,87 +22,105 @@ from ai_models.lstm_forecast import DemandForecaster
 
 # Page configuration
 st.set_page_config(
-    page_title="Smart Water Management System",
+    page_title="AI-Driven Smart Water Management System",
     page_icon="💧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Enhanced Custom CSS
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1f77b4;
+    .stApp {
+        background: linear-gradient(to bottom, #f0f9ff, #e0f2fe);
+    }
+    
+    .main-title {
+        font-size: 3rem;
+        font-weight: 800;
+        background: linear-gradient(120deg, #0c4a6e, #0284c7, #0ea5e9);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
         margin-bottom: 0.5rem;
     }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
+    
+    .sub-title {
+        font-size: 1.3rem;
+        color: #475569;
+        text-align: center;
         margin-bottom: 2rem;
+        font-weight: 500;
     }
+    
     .metric-card {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-    }
-    .alert-critical {
-        background-color: #fee;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #dc3545;
-        margin: 0.5rem 0;
-    }
-    .alert-warning {
-        background-color: #fff3cd;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #ffc107;
-        margin: 0.5rem 0;
-    }
-    .status-normal {
-        color: #28a745;
-        font-weight: bold;
-    }
-    .status-warning {
-        color: #ffc107;
-        font-weight: bold;
-    }
-    .status-critical {
-        color: #dc3545;
-        font-weight: bold;
-    }
-    .info-box {
-        background-color: #e7f3ff;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #0066cc;
+        background: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-left: 5px solid #3b82f6;
         margin: 1rem 0;
+    }
+    
+    .alert-critical {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border-left: 6px solid #dc2626;
+        margin: 1rem 0;
+        box-shadow: 0 4px 15px rgba(220, 38, 38, 0.2);
+    }
+    
+    .alert-warning {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border-left: 6px solid #f59e0b;
+        margin: 1rem 0;
+    }
+    
+    .alert-success {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border-left: 6px solid #10b981;
+        margin: 1rem 0;
+    }
+    
+    .status-badge {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        display: inline-block;
+        color: white;
+    }
+    
+    .section-header {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 2rem 0 1rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 3px solid #3b82f6;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Database path
 DB_PATH = "database/water.db"
 
 @st.cache_resource
 def get_leak_detector():
-    """Initialize leak detector"""
     detector = LeakDetector(db_path=DB_PATH)
     detector.load_model()
     return detector
 
 @st.cache_resource
 def get_forecaster():
-    """Initialize demand forecaster"""
     forecaster = DemandForecaster(db_path=DB_PATH)
     forecaster.load_model()
     return forecaster
 
 def load_latest_data(limit=100):
-    """Load latest sensor data"""
     try:
         conn = sqlite3.connect(DB_PATH)
         query = f"SELECT * FROM sensor_data ORDER BY id DESC LIMIT {limit}"
@@ -113,508 +133,321 @@ def load_latest_data(limit=100):
         return pd.DataFrame()
 
 def check_alerts(latest_data):
-    """Check for alert conditions"""
     alerts = []
     
     if latest_data['ph'] < 6:
-        alerts.append({"type": "pH LOW", "severity": "HIGH", "message": f"pH level critically low: {latest_data['ph']:.2f}"})
-    elif latest_data['ph'] > 8:
-        alerts.append({"type": "pH HIGH", "severity": "HIGH", "message": f"pH level critically high: {latest_data['ph']:.2f}"})
+        alerts.append({
+            "type": "pH CRITICALLY LOW",
+            "severity": "CRITICAL",
+            "message": f"pH level is {latest_data['ph']:.2f} (Safe range: 6.5-8.5)",
+            "recommendation": "Immediate water quality assessment required"
+        })
+    elif latest_data['ph'] > 8.5:
+        alerts.append({
+            "type": "pH CRITICALLY HIGH",
+            "severity": "CRITICAL",
+            "message": f"pH level is {latest_data['ph']:.2f} (Safe range: 6.5-8.5)",
+            "recommendation": "Check for contamination sources"
+        })
     
     if latest_data['turbidity'] > 5:
-        alerts.append({"type": "TURBIDITY", "severity": "MEDIUM", "message": f"High turbidity detected: {latest_data['turbidity']:.2f} NTU"})
+        alerts.append({
+            "type": "HIGH TURBIDITY",
+            "severity": "WARNING",
+            "message": f"Turbidity is {latest_data['turbidity']:.2f} NTU (Threshold: 5 NTU)",
+            "recommendation": "Check for sediment or contamination"
+        })
     
     return alerts
 
+def create_gauge_chart(value, title, min_val, max_val, threshold_low, threshold_high, unit=""):
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = value,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': f"<b>{title}</b>", 'font': {'size': 18}},
+        number = {'suffix': f" {unit}", 'font': {'size': 28, 'color': '#1e40af'}},
+        gauge = {
+            'axis': {'range': [min_val, max_val], 'tickwidth': 2},
+            'bar': {'color': "#3b82f6", 'thickness': 0.8},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "#cbd5e1",
+            'steps': [
+                {'range': [min_val, threshold_low], 'color': '#fecaca'},
+                {'range': [threshold_low, threshold_high], 'color': '#a7f3d0'},
+                {'range': [threshold_high, max_val], 'color': '#fecaca'}
+            ],
+            'threshold': {
+                'line': {'color': "#dc2626", 'width': 4},
+                'thickness': 0.75,
+                'value': value
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=280,
+        margin=dict(l=20, r=20, t=60, b=20),
+        paper_bgcolor='rgba(0,0,0,0)',
+        font={'family': "Arial, sans-serif"}
+    )
+    
+    return fig
+
 def main():
-    # Title with custom styling
-    st.markdown('<p class="main-header">Smart Water Management System</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Real-time Monitoring & AI Analytics Dashboard</p>', unsafe_allow_html=True)
+    # Title
+    st.markdown('<h1 class="main-title">AI-Driven Smart Water Management System</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-title">Real-Time Monitoring & Predictive Analytics Dashboard</p>', unsafe_allow_html=True)
     
     # Sidebar
     with st.sidebar:
-        st.header("Settings")
+        st.markdown("### Dashboard Controls")
         auto_refresh = st.checkbox("Auto-refresh", value=True)
-        refresh_interval = st.slider("Refresh interval (seconds)", 5, 60, 10)
-        data_limit = st.slider("Data points to display", 50, 500, 100)
+        refresh_interval = st.slider("Refresh (seconds)", 5, 60, 10)
+        data_limit = st.slider("Data points", 50, 500, 100)
         
         st.markdown("---")
-        st.header("AI Model Management")
+        st.markdown("### AI Model Training")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Train Leak Detector", use_container_width=True):
-                with st.spinner("Training..."):
-                    detector = get_leak_detector()
-                    success = detector.train()
-                    if success:
-                        st.success("Model trained successfully!")
-                    else:
-                        st.warning("Insufficient data for training")
+        if st.button("Train Leak Detector", use_container_width=True):
+            with st.spinner("Training..."):
+                detector = get_leak_detector()
+                if detector.train():
+                    st.success("Model trained successfully!")
+                else:
+                    st.warning("Need more data (50+ readings)")
         
-        with col2:
-            if st.button("Train Forecaster", use_container_width=True):
-                with st.spinner("Training..."):
-                    forecaster = get_forecaster()
-                    success = forecaster.train(epochs=30)
-                    if success:
-                        st.success("Model trained successfully!")
-                    else:
-                        st.warning("Insufficient data for training")
+        if st.button("Train Forecaster", use_container_width=True):
+            with st.spinner("Training..."):
+                forecaster = get_forecaster()
+                if forecaster.train(epochs=30):
+                    st.success("Model trained successfully!")
+                else:
+                    st.warning("Need more data (100+ readings)")
         
         st.markdown("---")
-        st.header("System Information")
-        st.info(f"**Last Updated:** {datetime.now().strftime('%H:%M:%S')}")
+        st.markdown("### System Info")
+        st.info(f"**Time:** {datetime.now().strftime('%H:%M:%S')}")
+        
+        detector = get_leak_detector()
+        forecaster = get_forecaster()
+        
+        if detector.is_trained:
+            st.success("Leak Detector: ACTIVE")
+        else:
+            st.warning("Leak Detector: INACTIVE")
+        
+        if forecaster.is_trained:
+            st.success("Forecaster: ACTIVE")
+        else:
+            st.warning("Forecaster: INACTIVE")
     
     # Load data
     df = load_latest_data(limit=data_limit)
     
     if df.empty:
-        st.warning("**No data available.** Start the sensor simulator to generate data.")
+        st.warning("No data available. Start the sensor simulator.")
         st.code("python simulator/sensor_simulator.py", language="bash")
         return
     
-    # Latest reading
     latest = df.iloc[-1]
     
-    # System Status Section
-    st.header("System Status Overview")
-    
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        delta_flow = latest['flow'] - df.iloc[-2]['flow'] if len(df) > 1 else 0
-        st.metric("Flow Rate", f"{latest['flow']:.2f} L/min", 
-                 delta=f"{delta_flow:.2f}")
-    
-    with col2:
-        delta_pressure = latest['pressure'] - df.iloc[-2]['pressure'] if len(df) > 1 else 0
-        st.metric("Pressure", f"{latest['pressure']:.2f} bar",
-                 delta=f"{delta_pressure:.2f}")
-    
-    with col3:
-        ph_status = "NORMAL" if 6.5 <= latest['ph'] <= 8.5 else "ALERT"
-        ph_color = "normal" if ph_status == "NORMAL" else "inverse"
-        st.metric("pH Level", f"{latest['ph']:.2f}", 
-                 delta=ph_status, delta_color=ph_color)
-    
-    with col4:
-        turb_status = "NORMAL" if latest['turbidity'] < 5 else "HIGH"
-        turb_color = "normal" if turb_status == "NORMAL" else "inverse"
-        st.metric("Turbidity", f"{latest['turbidity']:.2f} NTU",
-                 delta=turb_status, delta_color=turb_color)
-    
-    with col5:
-        st.metric("Temperature", f"{latest['temperature']:.1f}°C")
-    
-    # Alerts Section
+    # Alerts
     alerts = check_alerts(latest)
-    
-    # Leak detection
     detector = get_leak_detector()
+    
     if detector.is_trained:
         is_anomaly, score = detector.predict(latest['flow'], latest['pressure'])
         if is_anomaly:
             alerts.append({
                 "type": "LEAK DETECTED",
                 "severity": "CRITICAL",
-                "message": f"Anomaly in flow/pressure detected (confidence: {abs(score):.4f})"
+                "message": f"Anomaly in flow/pressure (Confidence: {abs(score):.2%})",
+                "recommendation": "Immediate inspection required"
             })
     
     if alerts:
-        st.header("Active Alerts")
+        st.markdown('<h2 class="section-header">Active Alerts</h2>', unsafe_allow_html=True)
         for alert in alerts:
             if alert['severity'] == 'CRITICAL':
                 st.markdown(f"""
                 <div class="alert-critical">
-                    <strong>CRITICAL: {alert['type']}</strong><br>
-                    {alert['message']}
+                    <h3 style="color: #dc2626; margin-top: 0;">CRITICAL: {alert['type']}</h3>
+                    <p><strong>Issue:</strong> {alert['message']}</p>
+                    <p><strong>Action:</strong> {alert['recommendation']}</p>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class="alert-warning">
-                    <strong>WARNING: {alert['type']}</strong><br>
-                    {alert['message']}
+                    <h3 style="color: #f59e0b; margin-top: 0;">WARNING: {alert['type']}</h3>
+                    <p><strong>Issue:</strong> {alert['message']}</p>
+                    <p><strong>Action:</strong> {alert['recommendation']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="alert-success">
+            <h3 style="color: #10b981; margin-top: 0;">All Systems Normal</h3>
+            <p>No alerts detected. All parameters within optimal range.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Statistics Summary
-    st.header("Statistical Summary")
-    col1, col2, col3, col4 = st.columns(4)
+    # Gauges
+    st.markdown('<h2 class="section-header">Real-Time System Metrics</h2>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Average Flow", f"{df['flow'].mean():.2f} L/min")
-        st.metric("Flow Range", f"{df['flow'].min():.2f} - {df['flow'].max():.2f}")
+        fig = create_gauge_chart(latest['flow'], "Flow Rate", 0, 30, 10, 20, "L/min")
+        st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.metric("Average Pressure", f"{df['pressure'].mean():.2f} bar")
-        st.metric("Pressure Range", f"{df['pressure'].min():.2f} - {df['pressure'].max():.2f}")
+        fig = create_gauge_chart(latest['ph'], "pH Level", 0, 14, 6.5, 8.5, "")
+        st.plotly_chart(fig, use_container_width=True)
     
     with col3:
-        st.metric("Average pH", f"{df['ph'].mean():.2f}")
-        st.metric("pH Range", f"{df['ph'].min():.2f} - {df['ph'].max():.2f}")
+        fig = create_gauge_chart(latest['turbidity'], "Turbidity", 0, 10, 1, 5, "NTU")
+        st.plotly_chart(fig, use_container_width=True)
     
-    with col4:
-        st.metric("Average Turbidity", f"{df['turbidity'].mean():.2f} NTU")
-        st.metric("Total Readings", f"{len(df)}")
+    col1, col2 = st.columns(2)
     
-    # Charts Section
-    st.header("Real-time Monitoring Charts")
+    with col1:
+        fig = create_gauge_chart(latest['pressure'], "Pressure", 0, 5, 2.0, 3.0, "bar")
+        st.plotly_chart(fig, use_container_width=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs(["Flow & Pressure", "Water Quality", "Demand Forecast", "System Health"])
+    with col2:
+        fig = create_gauge_chart(latest['temperature'], "Temperature", 0, 40, 15, 30, "°C")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Trend Charts
+    st.markdown('<h2 class="section-header">Historical Trends & Analysis</h2>', unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["Flow & Pressure Analysis", "Water Quality Monitoring", "AI Predictions"])
     
     with tab1:
-        st.subheader("Flow Rate Analysis")
-        
-        # Flow rate chart with enhanced styling
-        fig_flow = go.Figure()
-        fig_flow.add_trace(go.Scatter(
-            x=df.index, y=df['flow'],
-            mode='lines+markers', name='Flow Rate',
-            line=dict(color='#1f77b4', width=3),
-            marker=dict(size=4),
-            fill='tozeroy',
-            fillcolor='rgba(31, 119, 180, 0.1)'
-        ))
-        
-        # Add threshold lines
-        avg_flow = df['flow'].mean()
-        fig_flow.add_hline(y=avg_flow, line_dash="dash", line_color="green", 
-                          annotation_text=f"Average: {avg_flow:.2f}")
-        
-        fig_flow.update_layout(
-            title="Water Flow Rate Over Time",
-            xaxis_title="Reading Number",
-            yaxis_title="Flow Rate (L/min)",
-            height=350,
-            hovermode='x unified',
-            template='plotly_white'
+        # Combined Flow and Pressure
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=("Water Flow Rate Over Time", "Water Pressure Over Time"),
+            vertical_spacing=0.15
         )
-        st.plotly_chart(fig_flow, use_container_width=True)
         
-        # Flow statistics
-        col1, col2, col3 = st.columns(3)
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df['flow'], name="Flow Rate",
+                      line=dict(color='#3b82f6', width=3),
+                      fill='tozeroy', fillcolor='rgba(59, 130, 246, 0.1)'),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df['pressure'], name="Pressure",
+                      line=dict(color='#f59e0b', width=3),
+                      fill='tozeroy', fillcolor='rgba(245, 158, 11, 0.1)'),
+            row=2, col=1
+        )
+        
+        fig.update_xaxes(title_text="Reading Number", row=2, col=1)
+        fig.update_yaxes(title_text="Flow (L/min)", row=1, col=1)
+        fig.update_yaxes(title_text="Pressure (bar)", row=2, col=1)
+        
+        fig.update_layout(height=600, showlegend=True, hovermode='x unified')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Statistics
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Current Flow", f"{latest['flow']:.2f} L/min")
+            st.metric("Avg Flow", f"{df['flow'].mean():.2f} L/min")
         with col2:
             st.metric("Peak Flow", f"{df['flow'].max():.2f} L/min")
         with col3:
-            st.metric("Min Flow", f"{df['flow'].min():.2f} L/min")
-        
-        st.subheader("Pressure Analysis")
-        
-        # Pressure chart with enhanced styling
-        fig_pressure = go.Figure()
-        fig_pressure.add_trace(go.Scatter(
-            x=df.index, y=df['pressure'],
-            mode='lines+markers', name='Pressure',
-            line=dict(color='#ff7f0e', width=3),
-            marker=dict(size=4),
-            fill='tozeroy',
-            fillcolor='rgba(255, 127, 14, 0.1)'
-        ))
-        
-        avg_pressure = df['pressure'].mean()
-        fig_pressure.add_hline(y=avg_pressure, line_dash="dash", line_color="orange",
-                              annotation_text=f"Average: {avg_pressure:.2f}")
-        
-        fig_pressure.update_layout(
-            title="Water Pressure Over Time",
-            xaxis_title="Reading Number",
-            yaxis_title="Pressure (bar)",
-            height=350,
-            hovermode='x unified',
-            template='plotly_white'
-        )
-        st.plotly_chart(fig_pressure, use_container_width=True)
-        
-        # Pressure statistics
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Current Pressure", f"{latest['pressure']:.2f} bar")
-        with col2:
+            st.metric("Avg Pressure", f"{df['pressure'].mean():.2f} bar")
+        with col4:
             st.metric("Peak Pressure", f"{df['pressure'].max():.2f} bar")
-        with col3:
-            st.metric("Min Pressure", f"{df['pressure'].min():.2f} bar")
     
     with tab2:
+        # pH and Turbidity
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=("pH Level Monitoring", "Turbidity Monitoring"),
+            vertical_spacing=0.15
+        )
+        
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df['ph'], name="pH Level",
+                      line=dict(color='#10b981', width=3),
+                      mode='lines+markers'),
+            row=1, col=1
+        )
+        
+        fig.add_hline(y=6.5, line_dash="dash", line_color="red", row=1, col=1)
+        fig.add_hline(y=8.5, line_dash="dash", line_color="red", row=1, col=1)
+        
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df['turbidity'], name="Turbidity",
+                      line=dict(color='#dc2626', width=3),
+                      fill='tozeroy', fillcolor='rgba(220, 38, 38, 0.1)'),
+            row=2, col=1
+        )
+        
+        fig.add_hline(y=5, line_dash="dash", line_color="orange", row=2, col=1)
+        
+        fig.update_xaxes(title_text="Reading Number", row=2, col=1)
+        fig.update_yaxes(title_text="pH Level", row=1, col=1)
+        fig.update_yaxes(title_text="Turbidity (NTU)", row=2, col=1)
+        
+        fig.update_layout(height=600, showlegend=True, hovermode='x unified')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Compliance
+        ph_compliance = ((df['ph'] >= 6.5) & (df['ph'] <= 8.5)).sum() / len(df) * 100
+        turb_compliance = (df['turbidity'] < 5).sum() / len(df) * 100
+        
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.subheader("pH Level Monitoring")
-            
-            # pH chart with safety zones
-            fig_ph = go.Figure()
-            fig_ph.add_trace(go.Scatter(
-                x=df.index, y=df['ph'],
-                mode='lines+markers', name='pH',
-                line=dict(color='#2ca02c', width=3),
-                marker=dict(size=5)
-            ))
-            
-            # Safety zone
-            fig_ph.add_hrect(y0=6.5, y1=8.5, fillcolor="green", opacity=0.1, 
-                            annotation_text="Safe Zone", annotation_position="top left")
-            fig_ph.add_hline(y=6.5, line_dash="dash", line_color="red", 
-                            annotation_text="Min Safe Level")
-            fig_ph.add_hline(y=8.5, line_dash="dash", line_color="red", 
-                            annotation_text="Max Safe Level")
-            
-            fig_ph.update_layout(
-                title="pH Level Variation",
-                xaxis_title="Reading Number",
-                yaxis_title="pH Level",
-                height=350,
-                hovermode='x unified',
-                template='plotly_white'
-            )
-            st.plotly_chart(fig_ph, use_container_width=True)
-            
-            # pH statistics
-            ph_in_range = ((df['ph'] >= 6.5) & (df['ph'] <= 8.5)).sum()
-            ph_compliance = (ph_in_range / len(df)) * 100
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("Current pH", f"{latest['ph']:.2f}")
-                st.metric("Average pH", f"{df['ph'].mean():.2f}")
-            with col_b:
-                st.metric("Compliance Rate", f"{ph_compliance:.1f}%")
-                status = "COMPLIANT" if ph_compliance > 95 else "NON-COMPLIANT"
-                st.metric("Status", status)
-        
+            st.metric("pH Compliance Rate", f"{ph_compliance:.1f}%")
         with col2:
-            st.subheader("Turbidity Monitoring")
-            
-            # Turbidity chart
-            fig_turb = go.Figure()
-            fig_turb.add_trace(go.Scatter(
-                x=df.index, y=df['turbidity'],
-                mode='lines+markers', name='Turbidity',
-                line=dict(color='#d62728', width=3),
-                marker=dict(size=5),
-                fill='tozeroy',
-                fillcolor='rgba(214, 39, 40, 0.1)'
-            ))
-            
-            fig_turb.add_hline(y=5, line_dash="dash", line_color="orange", 
-                              annotation_text="Threshold (5 NTU)")
-            
-            fig_turb.update_layout(
-                title="Turbidity Levels",
-                xaxis_title="Reading Number",
-                yaxis_title="Turbidity (NTU)",
-                height=350,
-                hovermode='x unified',
-                template='plotly_white'
-            )
-            st.plotly_chart(fig_turb, use_container_width=True)
-            
-            # Turbidity statistics
-            turb_violations = (df['turbidity'] > 5).sum()
-            turb_compliance = ((len(df) - turb_violations) / len(df)) * 100
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("Current Turbidity", f"{latest['turbidity']:.2f} NTU")
-                st.metric("Average Turbidity", f"{df['turbidity'].mean():.2f} NTU")
-            with col_b:
-                st.metric("Violations", f"{turb_violations}")
-                st.metric("Compliance Rate", f"{turb_compliance:.1f}%")
+            st.metric("Turbidity Compliance", f"{turb_compliance:.1f}%")
     
     with tab3:
         st.subheader("24-Hour Water Demand Forecast")
         
-        col1, col2 = st.columns([3, 1])
+        forecaster = get_forecaster()
         
-        with col1:
-            forecaster = get_forecaster()
-            
-            if st.button("Generate Forecast", type="primary", use_container_width=True):
-                with st.spinner("Generating 24-hour forecast..."):
-                    predictions = forecaster.predict_next_hours(hours=24)
-                    
-                    # Create forecast dataframe
-                    forecast_df = pd.DataFrame({
-                        'Hour': [i/12 for i in range(len(predictions))],
-                        'Predicted Flow': predictions
-                    })
-                    
-                    # Plot forecast with confidence bands
-                    fig_forecast = go.Figure()
-                    
-                    # Add prediction line
-                    fig_forecast.add_trace(go.Scatter(
-                        x=forecast_df['Hour'], 
-                        y=forecast_df['Predicted Flow'],
-                        mode='lines', 
-                        name='Forecast',
-                        line=dict(color='#9467bd', width=4)
-                    ))
-                    
-                    # Add confidence bands (simple std-based)
-                    std_dev = np.std(predictions)
-                    fig_forecast.add_trace(go.Scatter(
-                        x=forecast_df['Hour'],
-                        y=forecast_df['Predicted Flow'] + std_dev,
-                        mode='lines',
-                        name='Upper Bound',
-                        line=dict(width=0),
-                        showlegend=False
-                    ))
-                    fig_forecast.add_trace(go.Scatter(
-                        x=forecast_df['Hour'],
-                        y=forecast_df['Predicted Flow'] - std_dev,
-                        mode='lines',
-                        name='Lower Bound',
-                        line=dict(width=0),
-                        fillcolor='rgba(148, 103, 189, 0.2)',
-                        fill='tonexty',
-                        showlegend=False
-                    ))
-                    
-                    fig_forecast.update_layout(
-                        title="Predicted Water Demand (Next 24 Hours)",
-                        xaxis_title="Hours from Now",
-                        yaxis_title="Flow Rate (L/min)",
-                        height=450,
-                        hovermode='x unified',
-                        template='plotly_white'
-                    )
-                    st.plotly_chart(fig_forecast, use_container_width=True)
-                    
-                    # Forecast statistics
-                    st.subheader("Forecast Analysis")
-                    col_a, col_b, col_c, col_d = st.columns(4)
-                    with col_a:
-                        st.metric("Average Demand", f"{np.mean(predictions):.2f} L/min")
-                    with col_b:
-                        st.metric("Peak Demand", f"{np.max(predictions):.2f} L/min")
-                    with col_c:
-                        st.metric("Min Demand", f"{np.min(predictions):.2f} L/min")
-                    with col_d:
-                        st.metric("Std Deviation", f"{np.std(predictions):.2f}")
-                    
-                    # Peak hours analysis
-                    peak_hour = forecast_df.loc[forecast_df['Predicted Flow'].idxmax(), 'Hour']
-                    low_hour = forecast_df.loc[forecast_df['Predicted Flow'].idxmin(), 'Hour']
-                    
-                    st.markdown(f"""
-                    <div class="info-box">
-                        <strong>Key Insights:</strong><br>
-                        • Peak demand expected at <strong>{peak_hour:.1f} hours</strong> from now<br>
-                        • Lowest demand expected at <strong>{low_hour:.1f} hours</strong> from now<br>
-                        • Demand variation: <strong>{(np.max(predictions) - np.min(predictions)):.2f} L/min</strong>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("### Forecast Info")
-            st.info("""
-            **Model:** LSTM Neural Network
-            
-            **Features:**
-            - Historical flow data
-            - Temperature patterns
-            - Time-based trends
-            
-            **Horizon:** 24 hours
-            
-            **Update:** Real-time
-            """)
-            
-            if forecaster.is_trained:
-                st.success("Model Status: TRAINED")
-            else:
-                st.warning("Model Status: NOT TRAINED")
-    
-    with tab4:
-        st.subheader("System Health Overview")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Temperature trend
-            fig_temp = go.Figure()
-            fig_temp.add_trace(go.Scatter(
-                x=df.index, y=df['temperature'],
-                mode='lines+markers', name='Temperature',
-                line=dict(color='#8c564b', width=3),
-                marker=dict(size=4)
-            ))
-            
-            avg_temp = df['temperature'].mean()
-            fig_temp.add_hline(y=avg_temp, line_dash="dash", line_color="brown",
-                              annotation_text=f"Average: {avg_temp:.1f}°C")
-            
-            fig_temp.update_layout(
-                title="Water Temperature Monitoring",
-                xaxis_title="Reading Number",
-                yaxis_title="Temperature (°C)",
-                height=350,
-                hovermode='x unified',
-                template='plotly_white'
-            )
-            st.plotly_chart(fig_temp, use_container_width=True)
-            
-            # Temperature statistics
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("Current Temp", f"{latest['temperature']:.1f}°C")
-                st.metric("Average Temp", f"{df['temperature'].mean():.1f}°C")
-            with col_b:
-                st.metric("Max Temp", f"{df['temperature'].max():.1f}°C")
-                st.metric("Min Temp", f"{df['temperature'].min():.1f}°C")
-        
-        with col2:
-            st.markdown("### Data Quality Metrics")
-            
-            # Calculate data quality metrics
-            total_readings = len(df)
-            time_span = (pd.to_datetime(df.iloc[-1]['timestamp']) - 
-                        pd.to_datetime(df.iloc[0]['timestamp'])).total_seconds() / 60
-            
-            # Data completeness
-            expected_readings = int(time_span / (5/60)) if time_span > 0 else total_readings
-            completeness = min((total_readings / expected_readings * 100), 100) if expected_readings > 0 else 100
-            
-            st.metric("Total Readings", f"{total_readings}")
-            st.metric("Data Completeness", f"{completeness:.1f}%")
-            st.metric("Time Span", f"{time_span:.1f} minutes")
-            st.metric("Last Update", datetime.now().strftime("%H:%M:%S"))
-            
-            # System status indicators
-            st.markdown("### System Status")
-            
-            status_items = [
-                ("Backend API", "ONLINE", "success"),
-                ("Database", "CONNECTED", "success"),
-                ("Simulator", "ACTIVE", "success"),
-                ("AI Models", "READY" if detector.is_trained else "TRAINING", 
-                 "success" if detector.is_trained else "warning")
-            ]
-            
-            for item, status, status_type in status_items:
-                if status_type == "success":
-                    st.success(f"**{item}:** {status}")
-                else:
-                    st.warning(f"**{item}:** {status}")
-            
-            # Performance metrics
-            st.markdown("### Performance Metrics")
-            st.metric("Avg Response Time", "< 100ms")
-            st.metric("Data Throughput", f"{total_readings / max(time_span/60, 1):.1f} readings/min")
-    
-    # Footer with system information
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("**System Version:** 1.0")
-    with col2:
-        st.markdown(f"**Database Records:** {len(df)}")
-    with col3:
-        st.markdown(f"**Last Refresh:** {datetime.now().strftime('%H:%M:%S')}")
+        if st.button("Generate AI Forecast", type="primary"):
+            with st.spinner("Generating 24-hour forecast..."):
+                predictions = forecaster.predict_next_hours(hours=24)
+                
+                forecast_df = pd.DataFrame({
+                    'Hour': [i/12 for i in range(len(predictions))],
+                    'Predicted Flow': predictions
+                })
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=forecast_df['Hour'], y=forecast_df['Predicted Flow'],
+                    mode='lines', name='Forecast',
+                    line=dict(color='#8b5cf6', width=4),
+                    fill='tozeroy', fillcolor='rgba(139, 92, 246, 0.2)'
+                ))
+                
+                fig.update_layout(
+                    title="Predicted Water Demand (Next 24 Hours)",
+                    xaxis_title="Hours from Now",
+                    yaxis_title="Flow Rate (L/min)",
+                    height=450,
+                    hovermode='x unified'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Average Demand", f"{np.mean(predictions):.2f} L/min")
+                with col2:
+                    st.metric("Peak Demand", f"{np.max(predictions):.2f} L/min")
+                with col3:
+                    st.metric("Min Demand", f"{np.min(predictions):.2f} L/min")
     
     # Auto-refresh
     if auto_refresh:
