@@ -203,7 +203,7 @@ def t(key: str, lang: str) -> str:
 # ---------------------------------------------------------------------------
 # DB helper (read-only)
 # ---------------------------------------------------------------------------
-DB_PATH = "database/water.db"
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "water.db")
 
 
 @st.cache_data(ttl=15, show_spinner=False)

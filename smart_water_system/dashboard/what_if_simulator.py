@@ -53,7 +53,7 @@ from ai_models.lstm_forecast import DemandForecaster
 from ai_models.recommendation_engine import WaterRecommendationEngine
 
 # ── constants ────────────────────────────────────────────────────────────────
-DB_PATH = "database/water.db"
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "water.db")
 STEPS_PER_HOUR = 12          # one reading every 5 seconds → 12/min → 720/hour
                               # but forecaster returns ~12 per hour in practice
 LITRES_PER_STEP = 60 / 12    # L/min × 5 s ÷ 60 = 5 L per step  (approx)
