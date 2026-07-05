@@ -53,7 +53,7 @@ from ai_models.anomaly_detection import LeakDetector
 from ai_models.root_cause_classifier import AnomalyRootCauseClassifier
 
 # ── constants ────────────────────────────────────────────────────────────────
-DB_PATH      = "database/water.db"
+DB_PATH      = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "database", "water.db")
 N_ZONES      = 6      # number of synthetic zones to create from DB rows
 MIN_ROWS     = 30     # minimum rows a zone must have to be scored
 ROWS_TO_LOAD = 3000   # total DB rows to pull for zone bucketing
