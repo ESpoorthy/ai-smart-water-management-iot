@@ -2,6 +2,10 @@
 FastAPI Backend for Smart Water Management System
 Handles sensor data ingestion, validation, and storage
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -9,6 +13,10 @@ from datetime import datetime
 import sqlite3
 import json
 from typing import List, Dict
+from backend.chat_agent import router as chat_router
+from ai_models.recommendation_engine import WaterRecommendationEngine
+from ai_models.lstm_forecast import DemandForecaster
+from ai_models.anomaly_detection import LeakDetector
 
 app = FastAPI(title="Smart Water Management System API")
 
@@ -21,8 +29,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database path
-DB_PATH = "database/water.db"
+# Decision Intelligence: Natural language chat via Gemini
+app.include_router(chat_router)
+
+# Lazy-loaded singletons for the recommendations endpoint
+import pathlib as _pl
+_rec_engine  = None
+_forecaster  = None
+_detector    = None
+
+def _get_rec_engine() -> WaterRecommendationEngine:
+    global _rec_engine
+    if _rec_engine is None:
+        _rec_engine = WaterRecommendationEngine(db_path=DB_PATH)
+    return _rec_engine
+
+def _get_forecaster() -> DemandForecaster:
+    global _forecaster
+    if _forecaster is None:
+        _model_path = str(_pl.Path(__file__).parent.parent / "ai_models" / "lstm_model.h5")
+        _forecaster = DemandForecaster(db_path=DB_PATH, model_path=_model_path)
+        _forecaster.load_model()
+    return _forecaster
+
+def _get_detector() -> LeakDetector:
+    global _detector
+    if _detector is None:
+        _leak_path = str(_pl.Path(__file__).parent.parent / "ai_models" / "leak_model.pkl")
+        _detector = LeakDetector(db_path=DB_PATH, model_path=_leak_path)
+        _detector.load_model()
+    return _detector
+
+# Database path — absolute so the server works from any CWD
+import pathlib as _pathlib
+DB_PATH = str(_pathlib.Path(__file__).parent.parent / "database" / "water.db")
 
 class SensorData(BaseModel):
     flow: float = Field(..., ge=0, description="Flow rate in L/min")
@@ -155,6 +195,65 @@ async def clear_data():
         return {"status": "success", "message": "All data cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/recommendations")
+async def get_recommendations(zone: str = "Zone-1", include_forecast: bool = True):
+    """
+    Decision Intelligence endpoint.
+    Returns prioritised, actionable recommendations for the given zone
+    based on live sensor data, anomaly detection, and demand forecast.
+    """
+    try:
+        engine    = _get_rec_engine()
+        detector  = _get_detector()
+        forecaster = _get_forecaster()
+
+        # Pull latest reading from DB
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT flow, pressure, ph, turbidity, temperature "
+            "FROM sensor_data ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+
+        anomaly_result = None
+        forecast       = None
+
+        if row:
+            flow, pressure, ph, turbidity, temperature = row
+            if detector.is_trained:
+                is_anomaly, score = detector.predict(flow, pressure)
+                anomaly_result = {
+                    "is_anomaly": bool(is_anomaly),
+                    "score": float(score),
+                    "flow": float(flow),
+                    "pressure": float(pressure),
+                    "ph": float(ph),
+                    "turbidity": float(turbidity),
+                    "temperature": float(temperature),
+                }
+
+        if include_forecast and forecaster.is_trained:
+            forecast = forecaster.predict_next_hours(hours=24)
+
+        recs = engine.recommend_from_model_outputs(
+            zone=zone,
+            anomaly_result=anomaly_result,
+            forecast=forecast,
+        )
+
+        return {
+            "zone": zone,
+            "recommendations": recs,
+            "total": len(recs),
+            "high_priority": sum(1 for r in recs if r["priority"] == "HIGH"),
+            "forecaster_active": forecaster.is_trained,
+            "detector_active": detector.is_trained,
+            "generated_at": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
