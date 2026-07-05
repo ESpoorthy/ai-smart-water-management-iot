@@ -1,0 +1,26 @@
+# ============================================================
+# Additional dependencies for Phase 1 Decision Intelligence
+# Add these to your existing requirements.txt (or install via
+# pip install -r requirements-additions.txt)
+# ============================================================
+
+# Phase 1 – recommendation_engine.py & root_cause_classifier.py
+# Both modules use only numpy, pandas, scikit-learn, and sqlite3
+# (stdlib). If those are already installed from the base
+# requirements.txt, NO new packages are needed for Phase 1.
+#
+# Listed here for completeness / future phases:
+
+numpy>=1.24.0          # already in base requirements; listed for pinning reference
+pandas>=2.0.0          # already in base requirements
+scikit-learn>=1.3.0    # already in base requirements
+
+# Phase 2 (chat_agent.py)
+google-generativeai==0.7.2
+
+# Phase 4 (alerts.py)
+twilio==8.13.0
+
+# Phase 5 (export_to_bigquery.py)
+google-cloud-bigquery==3.20.1
+db-dtypes==1.2.0
