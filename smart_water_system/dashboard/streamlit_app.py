@@ -19,9 +19,27 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai_models.anomaly_detection import LeakDetector
 from ai_models.lstm_forecast import DemandForecaster
-from ai_models.recommendation_engine import WaterRecommendationEngine
-from ai_models.root_cause_classifier import AnomalyRootCauseClassifier
-from backend.alerts import send_alert, AlertLevel
+try:
+    from ai_models.recommendation_engine import WaterRecommendationEngine
+    RECOMMENDATIONS_AVAILABLE = True
+except Exception:
+    RECOMMENDATIONS_AVAILABLE = False
+    WaterRecommendationEngine = None
+
+try:
+    from ai_models.root_cause_classifier import AnomalyRootCauseClassifier
+    ROOT_CAUSE_AVAILABLE = True
+except Exception:
+    ROOT_CAUSE_AVAILABLE = False
+    AnomalyRootCauseClassifier = None
+
+try:
+    from backend.alerts import send_alert, AlertLevel
+    ALERTS_AVAILABLE = True
+except Exception:
+    ALERTS_AVAILABLE = False
+    send_alert = None
+    AlertLevel = None
 
 # Page configuration
 st.set_page_config(
@@ -202,6 +220,8 @@ def get_forecaster():
 
 @st.cache_resource
 def get_recommendation_engine():
+    if not RECOMMENDATIONS_AVAILABLE:
+        return None
     return WaterRecommendationEngine(db_path=DB_PATH)
 
 def load_latest_data(limit=100):
@@ -568,9 +588,12 @@ def main():
         )
 
         engine = get_recommendation_engine()
+        if engine is None:
+            st.info("Decision Intelligence module not available in this deployment. Run locally for full features.")
+            st.stop()
         forecaster = get_forecaster()
         detector = get_leak_detector()
-        classifier = AnomalyRootCauseClassifier()
+        classifier = AnomalyRootCauseClassifier() if ROOT_CAUSE_AVAILABLE else None
 
         # Determine anomaly status from latest reading
         anomaly_result = None
@@ -648,7 +671,7 @@ def main():
                     """, unsafe_allow_html=True)
 
                     # Root cause classification for anomaly-flagged items
-                    if rec.get("category") in ("leak_risk", "anomaly_flagged") and anomaly_result:
+                    if classifier and rec.get("category") in ("leak_risk", "anomaly_flagged") and anomaly_result:
                         clf_result = classifier.classify(
                             flow=anomaly_result.get("flow"),
                             pressure=anomaly_result.get("pressure"),
@@ -664,7 +687,7 @@ def main():
                         )
 
                     # Fire console alert for HIGH priority items when button clicked
-                    if send_alerts and pri == "HIGH":
+                    if send_alerts and pri == "HIGH" and ALERTS_AVAILABLE:
                         send_alert(
                             level=AlertLevel.CRITICAL,
                             title=rec["message"][:100],
