@@ -564,11 +564,18 @@ def render_live_dashboard(df, latest, anomaly, alerts):
         (df["ph"],          "#10b981", 2, 1),
         (df["turbidity"],   "#ef4444", 2, 2),
     ]
+    _fill_colors = {
+        "#0ea5e9": "rgba(14,165,233,0.08)",
+        "#f59e0b": "rgba(245,158,11,0.08)",
+        "#10b981": "rgba(16,185,129,0.08)",
+        "#ef4444": "rgba(239,68,68,0.08)",
+    }
     for series, color, row, col in pairs:
         fig.add_trace(
             go.Scatter(x=df.index, y=series, mode="lines",
                        line=dict(color=color, width=2),
-                       fill="tozeroy", fillcolor=color.replace(")", ",0.08)").replace("rgb", "rgba") if "rgb" in color else color + "14",
+                       fill="tozeroy",
+                       fillcolor=_fill_colors.get(color, "rgba(14,165,233,0.08)"),
                        showlegend=False),
             row=row, col=col,
         )
