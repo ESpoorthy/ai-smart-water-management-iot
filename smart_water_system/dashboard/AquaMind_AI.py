@@ -190,6 +190,26 @@ p, span, div, label, h1, h2, h3, h4, li {{
 .confidence-med  {{ color: #f59e0b; font-weight: 700; }}
 .confidence-low  {{ color: #ef4444; font-weight: 700; }}
 
+/* ── Anomaly pulse animation ── */
+@keyframes pulse-red {{
+    0%   {{ box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }}
+    70%  {{ box-shadow: 0 0 0 14px rgba(239,68,68,0); }}
+    100% {{ box-shadow: 0 0 0 0 rgba(239,68,68,0); }}
+}}
+.anomaly-pulse {{ animation: pulse-red 1.5s infinite; border: 2px solid #ef4444 !important; }}
+
+/* ── Maintenance card ── */
+.maintenance-card {{
+    background: {"#1e293b" if _D else "#fff7ed"}; border-left: 4px solid #f59e0b;
+    border-radius: 10px; padding: 1rem 1.2rem; margin: 0.5rem 0;
+}}
+
+/* ── Root cause card ── */
+.root-cause-card {{
+    background: {"#1e0a0a" if _D else "#fef2f2"}; border-radius: 12px;
+    padding: 1.5rem; margin: 1rem 0; border-left: 4px solid #ef4444;
+}}
+
 /* ── Streamlit native widget overrides for dark mode ── */
 {"" if not _D else ".stTextInput > div > div { background: #1e293b !important; border-color: #334155 !important; } .stTextInput input { color: #f1f5f9 !important; background: #1e293b !important; } .stSelectbox > div > div { background: #1e293b !important; border-color: #334155 !important; color: #f1f5f9 !important; } div[data-baseweb='select'] { background: #1e293b !important; } div[data-baseweb='select'] * { color: #f1f5f9 !important; } .stSlider > div > div { background: #334155 !important; } .stDataFrame { background: #1e293b !important; color: #f1f5f9 !important; }"}
 </style>
@@ -276,6 +296,13 @@ def get_recommendation_engine():
     return WaterRecommendationEngine(db_path=DB_PATH)
 
 
+@st.cache_resource
+def get_root_cause_classifier():
+    if not ROOT_CAUSE_AVAILABLE:
+        return None
+    return AnomalyRootCauseClassifier()
+
+
 def load_latest_data(limit=100):
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -301,6 +328,22 @@ def demo_sensor_values(rng_seed: int = None) -> dict:
         "turbidity":   round(max(0.1, 1.5 + d * 1.0 + r.gauss(0, 0.25)), 2),
         "temperature": round(24.5 + r.gauss(0, 0.5), 2),
     }
+
+
+def _sparkline(values: list, color: str = "#0ea5e9", height: int = 60) -> go.Figure:
+    """Tiny inline trend line for KPI cards."""
+    fig = go.Figure(go.Scatter(
+        y=values, mode="lines",
+        line=dict(color=color, width=2),
+        fill="tozeroy", fillcolor=color.replace(")", ",0.15)").replace("rgb", "rgba") if "rgb" in color else color + "26",
+    ))
+    fig.update_layout(
+        height=height, margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(visible=False), yaxis=dict(visible=False),
+        showlegend=False,
+    )
+    return fig
 
 
 def create_gauge(value, title, lo, hi, thresh_lo, thresh_hi, unit="", height=240):
@@ -508,15 +551,20 @@ def render_mission_control(df, latest, anomaly, health_score, alerts):
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     sensor_count = 5
 
+    # Build sparkline data from df if available
+    _flow_spark    = list(df["flow"].tail(10))     if not df.empty else [15]*10
+    _press_spark   = list(df["pressure"].tail(10)) if not df.empty else [2.5]*10
+
     kpis = [
-        (k1, str(sensor_count), "Active Sensors",  "#0ea5e9"),
-        (k2, str(sensor_count - len([a for a in alerts if a["sev"] == "CRITICAL"])), "Healthy Sensors", "#10b981"),
-        (k3, f"{latest['flow']:.1f} L/m", "Current Flow",     "#8b5cf6"),
-        (k4, f"{latest['flow']*1.08:.1f} L/m","Predicted Flow", "#f59e0b"),
-        (k5, str(crit_count),  "Active Leaks",    "#ef4444"),
-        (k6, "97.3%",          "AI Accuracy",     "#10b981"),
+        (k1, str(sensor_count),                   "Active Sensors",  "#0ea5e9", None),
+        (k2, str(sensor_count - len([a for a in alerts if a["sev"] == "CRITICAL"])),
+             "Healthy Sensors", "#10b981", None),
+        (k3, f"{latest['flow']:.1f} L/m",         "Current Flow",    "#8b5cf6", _flow_spark),
+        (k4, f"{latest['flow']*1.08:.1f} L/m",    "Predicted Flow",  "#f59e0b", _flow_spark),
+        (k5, str(crit_count),                      "Active Leaks",    "#ef4444", None),
+        (k6, "97.3%",                              "AI Accuracy",     "#10b981", None),
     ]
-    for col, val, lbl, clr in kpis:
+    for col, val, lbl, clr, spark in kpis:
         with col:
             st.markdown(f"""
             <div class="kpi-card">
@@ -524,6 +572,9 @@ def render_mission_control(df, latest, anomaly, health_score, alerts):
                 <div class="kpi-label">{lbl}</div>
             </div>
             """, unsafe_allow_html=True)
+            if spark:
+                st.plotly_chart(_sparkline(spark, color=clr), use_container_width=True,
+                                config={"displayModeBar": False})
 
     st.markdown("<br>", unsafe_allow_html=True)
     left, right = st.columns([1.4, 1])
@@ -567,13 +618,114 @@ def render_mission_control(df, latest, anomaly, health_score, alerts):
 
     # ── Optimize button ────────────────────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("Optimize My Farm — Apply All AI Recommendations", use_container_width=True):
-        with st.spinner("Applying AI optimization parameters…"):
-            time.sleep(1.2)
-        st.success(
-            "Optimization applied. Irrigation schedule adjusted, pressure regulators "
-            "updated, and predictive maintenance tasks queued. Estimated savings: 340 L/day."
-        )
+    opt_col, exp_col = st.columns([2, 1])
+    with opt_col:
+        if st.button("Optimize My Farm — Apply All AI Recommendations", use_container_width=True):
+            with st.spinner("Applying AI optimization parameters…"):
+                time.sleep(1.2)
+            st.success(
+                "Optimization applied. Irrigation schedule adjusted, pressure regulators "
+                "updated, and predictive maintenance tasks queued. Estimated savings: 340 L/day."
+            )
+    with exp_col:
+        if not df.empty:
+            csv_bytes = df.to_csv(index=False).encode()
+            st.download_button(
+                label="Export Full Report CSV",
+                data=csv_bytes,
+                file_name=f"aquamind_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+    # ── Root Cause Classifier ──────────────────────────────────────────────
+    if anomaly:
+        st.markdown('<div class="section-header">AI Root Cause Analysis</div>', unsafe_allow_html=True)
+        clf = get_root_cause_classifier()
+        if clf:
+            rc_result = clf.classify(
+                flow=latest["flow"], pressure=latest["pressure"],
+                ph=latest["ph"], turbidity=latest["turbidity"],
+                temperature=latest["temperature"],
+            )
+            rc_color = {"LEAK": "#ef4444", "CONTAMINATION": "#f59e0b",
+                        "UNUSUAL_USAGE": "#8b5cf6", "SENSOR_FAULT": "#64748b"}.get(rc_result["root_cause"], "#ef4444")
+            conf_color = {"HIGH": "#10b981", "MEDIUM": "#f59e0b", "LOW": "#ef4444"}.get(rc_result["confidence"], "#64748b")
+            st.markdown(f"""
+            <div class="root-cause-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;">
+                    <div style="font-size:1.1rem;font-weight:800;color:{rc_color};">
+                        ROOT CAUSE: {rc_result['label']}
+                    </div>
+                    <span style="background:{conf_color};color:white;padding:0.2rem 0.6rem;
+                          border-radius:99px;font-size:0.75rem;font-weight:700;">
+                        {rc_result['confidence']} CONFIDENCE
+                    </span>
+                </div>
+                <div style="color:{_TXT};margin-bottom:0.6rem;">{rc_result['explanation']}</div>
+                <div style="color:#f59e0b;font-weight:600;">Recommended Action:</div>
+                <div style="color:{_TXT};margin-bottom:0.8rem;">{rc_result['recommended_action']}</div>
+                <div style="color:{_T2};font-size:0.82rem;font-weight:600;margin-bottom:0.3rem;">
+                    Supporting Evidence ({len(rc_result['supporting_evidence'])} rules triggered):
+                </div>
+                {"".join(f'<div style="color:{_T2};font-size:0.82rem;padding:0.2rem 0;">• {ev}</div>' for ev in rc_result['supporting_evidence'])}
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── Predictive Maintenance Countdown ───────────────────────────────────
+    st.markdown('<div class="section-header">Predictive Maintenance Schedule</div>', unsafe_allow_html=True)
+    turb_avg = df["turbidity"].mean() if not df.empty else latest["turbidity"]
+    ph_std   = df["ph"].std()         if not df.empty and len(df) > 5 else 0.1
+
+    # Simple rule-based countdown: higher turbidity → earlier filter backwash
+    filter_days  = max(1, int(5 - turb_avg * 0.6))
+    sensor_days  = 14  # fixed calibration cycle
+    inspect_days = max(3, 7 - (1 if anomaly else 0) * 4)
+
+    pm1, pm2, pm3 = st.columns(3)
+    for col, task, days, clr in [
+        (pm1, "Filter Backwash",      filter_days,  "#f59e0b" if filter_days <= 2 else "#10b981"),
+        (pm2, "Sensor Recalibration", sensor_days,  "#0ea5e9"),
+        (pm3, "Pipeline Inspection",  inspect_days, "#ef4444" if anomaly else "#10b981"),
+    ]:
+        urgency = "URGENT" if days <= 1 else ("SOON" if days <= 3 else "SCHEDULED")
+        with col:
+            st.markdown(f"""
+            <div class="maintenance-card">
+                <div style="font-size:0.75rem;font-weight:700;color:{clr};text-transform:uppercase;
+                     letter-spacing:1px;margin-bottom:0.3rem;">{urgency}</div>
+                <div style="font-weight:700;color:{_TXT};margin-bottom:0.2rem;">{task}</div>
+                <div style="font-size:2rem;font-weight:800;color:{clr};">{days}d</div>
+                <div style="font-size:0.8rem;color:{_T2};">recommended window</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── Live Water Savings Counter ─────────────────────────────────────────
+    st.markdown('<div class="section-header">Live Water Savings Since System Start</div>', unsafe_allow_html=True)
+    baseline_flow   = 25.0
+    actual_avg_flow = df["flow"].mean() if not df.empty else latest["flow"]
+    # Estimate savings accumulating since session start (stored in session state)
+    if "_savings_start" not in st.session_state:
+        st.session_state["_savings_start"] = datetime.now()
+    elapsed_min = (datetime.now() - st.session_state["_savings_start"]).total_seconds() / 60
+    live_saved_l  = max(0, (baseline_flow - actual_avg_flow) * elapsed_min)
+    daily_saved_l = max(0, (baseline_flow - actual_avg_flow) * 8 * 60)
+
+    sv1, sv2, sv3, sv4 = st.columns(4)
+    savings_data = [
+        (sv1, f"{live_saved_l:,.1f} L",      "Saved This Session",   "#0ea5e9"),
+        (sv2, f"{daily_saved_l:,.0f} L",      "Projected Daily Save", "#10b981"),
+        (sv3, f"{daily_saved_l * 30:,.0f} L", "Projected Monthly",    "#8b5cf6"),
+        (sv4, f"₹{daily_saved_l * 0.05 * 30:.0f}",  "Monthly Cost Saving",  "#f59e0b"),
+    ]
+    for col, val, lbl, clr in savings_data:
+        with col:
+            st.markdown(f"""
+            <div class="kpi-card" style="border-top:3px solid {clr};">
+                <div style="font-size:1.8rem;font-weight:800;color:{clr};">{val}</div>
+                <div style="font-size:0.82rem;color:{_T2};margin-top:0.3rem;">{lbl}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 
@@ -900,13 +1052,30 @@ def render_ai_advisor(df, latest, anomaly, detector, engine):
         if q and q != "Select a question…":
             answer = copilot_qa.get(q)
             if answer is None:
-                # Generic response for custom questions
-                answer = (
-                    f"Based on current sensor data (flow={latest['flow']:.1f} L/min, "
-                    f"pressure={latest['pressure']:.2f} bar, pH={latest['ph']:.2f}), "
-                    "the system appears to be operating within normal parameters. "
-                    "For detailed analysis, please consult the Analytics & Forecast tab."
-                )
+                # Context-aware generic response using live sensor values
+                issues = []
+                if not ph_ok:
+                    issues.append(f"pH is {latest['ph']:.2f} ({'too low' if latest['ph'] < 6.5 else 'too high'})")
+                if not turb_ok:
+                    issues.append(f"turbidity is elevated at {latest['turbidity']:.1f} NTU")
+                if not press_ok:
+                    issues.append(f"pressure is {'low' if latest['pressure'] < 1.5 else 'high'} at {latest['pressure']:.2f} bar")
+                if anomaly:
+                    issues.append("an AI anomaly has been detected (possible leak)")
+                if issues:
+                    answer = (
+                        f"Based on your question and current sensor readings, I can see: "
+                        f"{'; '.join(issues)}. "
+                        f"Current flow is {latest['flow']:.1f} L/min, pressure {latest['pressure']:.2f} bar. "
+                        f"I recommend checking the Live Dashboard and AI Advisor tabs for detailed guidance."
+                    )
+                else:
+                    answer = (
+                        f"All systems appear normal. Flow={latest['flow']:.1f} L/min, "
+                        f"pressure={latest['pressure']:.2f} bar, pH={latest['ph']:.2f}, "
+                        f"turbidity={latest['turbidity']:.1f} NTU. "
+                        f"No anomalies detected. Continue monitoring as scheduled."
+                    )
             st.markdown(f"""
             <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);
                         border-radius:12px;padding:1.2rem;border-left:4px solid #0ea5e9;margin-top:0.5rem;">
@@ -1614,6 +1783,7 @@ def main():
     detector  = get_leak_detector()
     forecaster= get_forecaster()
     engine    = get_recommendation_engine()
+    classifier= get_root_cause_classifier()
 
     # ── Sidebar ──────────────────────────────────────────────────────────────
     with st.sidebar:
@@ -1727,8 +1897,18 @@ def main():
     health_score = water_health_score(latest_dict, anomaly)
     alerts       = check_alerts(latest_dict, anomaly)
 
+    # ── Anomaly visual alert banner ───────────────────────────────────────────
+    if anomaly:
+        st.markdown("""
+        <div class="anomaly-pulse" style="background:#450a0a;border-radius:10px;
+             padding:0.8rem 1.2rem;margin-bottom:0.5rem;color:#fca5a5;font-weight:700;
+             font-size:1rem;text-align:center;">
+            CRITICAL ANOMALY DETECTED — AI has flagged an active leak or fault. Scroll to Live Dashboard for details.
+        </div>
+        """, unsafe_allow_html=True)
+
     # ── Header ─────────────────────────────────────────────────────────────────
-    hcol1, hcol2 = st.columns([3, 1])
+    hcol1, hcol2, hcol3 = st.columns([3, 1, 1])
     with hcol1:
         st.markdown(f"""
         <h1 style="font-size:2rem;font-weight:800;
@@ -1743,14 +1923,32 @@ def main():
         """, unsafe_allow_html=True)
     with hcol2:
         hs_color = score_color(health_score)
+        pulse_cls = "anomaly-pulse" if anomaly else ""
         st.markdown(f"""
         <div style="text-align:right;padding-top:0.5rem;">
             <div style="font-size:0.75rem;color:{_TEXT2};font-weight:600;text-transform:uppercase;">
                 Water Health Score
             </div>
-            <div style="font-size:2.5rem;font-weight:800;color:{hs_color};">{health_score}<span style="font-size:1rem;color:{_TEXT2};">/100</span></div>
+            <div class="{pulse_cls}" style="font-size:2.5rem;font-weight:800;color:{hs_color};
+                 border-radius:8px;padding:0.2rem 0.5rem;display:inline-block;">
+                {health_score}<span style="font-size:1rem;color:{_TEXT2};">/100</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+    with hcol3:
+        # CSV export button
+        if not df.empty:
+            export_data = df.copy()
+            export_data["health_score"] = health_score
+            export_data["anomaly"] = anomaly
+            csv_bytes = export_data.to_csv(index=False).encode()
+            st.download_button(
+                label="Export CSV",
+                data=csv_bytes,
+                file_name=f"aquamind_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
 
     # ── Navigation tabs ────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
