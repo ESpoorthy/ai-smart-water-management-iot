@@ -1476,7 +1476,10 @@ def render_analytics(df, latest, forecaster):
                 if forecaster:
                     with st.spinner("Training…"):
                         ok = forecaster.train(epochs=30)
-                    st.success("Forecaster trained!") if ok else st.error("Training failed.")
+                    if ok:
+                        st.success("Forecaster trained!")
+                    else:
+                        st.error("Training failed.")
                 else:
                     st.error("Forecaster module not available.")
         with t2:
@@ -1485,7 +1488,10 @@ def render_analytics(df, latest, forecaster):
                 if detector:
                     with st.spinner("Training…"):
                         ok = detector.train()
-                    st.success("Leak detector trained!") if ok else st.warning("Need 50+ readings.")
+                    if ok:
+                        st.success("Leak detector trained!")
+                    else:
+                        st.warning("Need 50+ readings.")
                 else:
                     st.error("Leak detector module not available.")
 
@@ -2005,14 +2011,20 @@ def main():
             if _det_sb:
                 with st.spinner("Training leak detector…"):
                     ok = _det_sb.train()
-                st.success("Leak detector trained!") if ok else st.warning("Need 50+ readings.")
+                if ok:
+                    st.success("Leak detector trained!")
+                else:
+                    st.warning("Need 50+ readings.")
             else:
                 st.error("Leak detector not available.")
         if st.button("Train Forecaster", use_container_width=True, key="sidebar_train_forecaster"):
             if _fc_sb:
                 with st.spinner("Training forecaster…"):
                     ok = _fc_sb.train(epochs=30)
-                st.success("Forecaster trained!") if ok else st.error("Training failed.")
+                if ok:
+                    st.success("Forecaster trained!")
+                else:
+                    st.error("Training failed.")
             else:
                 st.error("Forecaster not available.")
 
