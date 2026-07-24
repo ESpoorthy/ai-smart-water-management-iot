@@ -1321,7 +1321,7 @@ def render_analytics(df, latest, forecaster):
         else:
             fig = make_subplots(rows=2, cols=1,
                                 subplot_titles=("Water Flow Rate Over Time", "Water Pressure Over Time"),
-                                vertical_spacing=0.15)
+                                vertical_spacing=0.25)
             fig.add_trace(go.Scatter(x=df.index, y=df["flow"],     name="Flow Rate",
                                      line=dict(color="#0ea5e9", width=2),
                                      fill="tozeroy", fillcolor="rgba(14,165,233,0.1)"), row=1, col=1)
@@ -1329,15 +1329,19 @@ def render_analytics(df, latest, forecaster):
                                      line=dict(color="#f59e0b", width=2),
                                      fill="tozeroy", fillcolor="rgba(245,158,11,0.1)"), row=2, col=1)
             fig.add_hline(y=2.0, line_dash="dash", line_color="#ef4444",
-                          annotation_text="Min Pressure (2.0 bar)", row=2, col=1)
+                          annotation_text="Min Pressure (2.0 bar)",
+                          annotation_position="top right", row=2, col=1)
             fig.add_hline(y=3.2, line_dash="dash", line_color="#f59e0b",
-                          annotation_text="Max Pressure (3.2 bar)", row=2, col=1)
-            fig.update_layout(height=500, paper_bgcolor="rgba(0,0,0,0)",
+                          annotation_text="Max Pressure (3.2 bar)",
+                          annotation_position="bottom right", row=2, col=1)
+            fig.update_layout(height=580, paper_bgcolor="rgba(0,0,0,0)",
                                plot_bgcolor=_PBG, hovermode="x unified",
+                               margin=dict(t=60, b=40),
                                xaxis=dict(title="Reading Number"),
                                xaxis2=dict(title="Reading Number"),
                                yaxis=dict(title="Flow (L/min)"),
                                yaxis2=dict(title="Pressure (bar)"))
+            fig.update_annotations(font_size=13)
             st.plotly_chart(fig, use_container_width=True)
 
             f1, f2, f3, f4 = st.columns(4)
@@ -1358,7 +1362,7 @@ def render_analytics(df, latest, forecaster):
         else:
             fig2 = make_subplots(rows=2, cols=1,
                                  subplot_titles=("pH Level Monitoring", "Turbidity Monitoring"),
-                                 vertical_spacing=0.15)
+                                 vertical_spacing=0.25)
             fig2.add_trace(go.Scatter(x=df.index, y=df["ph"], name="pH Level",
                                       line=dict(color="#10b981", width=2)), row=1, col=1)
             fig2.add_trace(go.Scatter(x=df.index, y=df["turbidity"], name="Turbidity",
@@ -1371,12 +1375,14 @@ def render_analytics(df, latest, forecaster):
                            annotation_text="pH Max (8.5)", row=1, col=1)
             fig2.add_hline(y=5.0, line_dash="dash", line_color="#f59e0b",
                            annotation_text="Turbidity Limit (5 NTU)", row=2, col=1)
-            fig2.update_layout(height=500, paper_bgcolor="rgba(0,0,0,0)",
+            fig2.update_layout(height=580, paper_bgcolor="rgba(0,0,0,0)",
                                 plot_bgcolor=_PBG, hovermode="x unified",
+                                margin=dict(t=60, b=40),
                                 xaxis=dict(title="Reading Number"),
                                 xaxis2=dict(title="Reading Number"),
                                 yaxis=dict(title="pH"),
                                 yaxis2=dict(title="Turbidity (NTU)"))
+            fig2.update_annotations(font_size=13)
             st.plotly_chart(fig2, use_container_width=True)
 
             ph_comp   = ((df["ph"] >= 6.5) & (df["ph"] <= 8.5)).mean() * 100

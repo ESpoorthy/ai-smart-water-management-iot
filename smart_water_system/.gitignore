@@ -2,53 +2,20 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
+
+# Virtual environment
 venv/
-ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+.venv/
 
 # Database
-*.db
-*.sqlite
-*.sqlite3
+database/*.db
 
-# AI Models
-*.h5
-*.pkl
-*_scaler.pkl
-ai_models/lstm_model.h5
-ai_models/leak_model.pkl
+# Trained models (regenerate with train scripts)
+ai_models/*.pkl
+ai_models/*.h5
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
+# macOS
 .DS_Store
-Thumbs.db
 
-# Logs
-*.log
-
-# Environment
-.env
-.env.local
+# Streamlit secrets
+.streamlit/secrets.toml
