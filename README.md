@@ -266,7 +266,7 @@ IoT-enabled smart sensors strategically deployed throughout the water distributi
 
 ## Quick Start Guide
 
-**Deployed Link: https://ai-smart-water-management-iot.onrender.com**
+**Deployed Link: [https://ai-smart-water-management-iot.onrender.com](https://ai-smart-water-management-iot.onrender.com)**
 
 ### Prerequisites
 - Python 3.8 or higher
