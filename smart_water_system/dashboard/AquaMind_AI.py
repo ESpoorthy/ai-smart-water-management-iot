@@ -23,6 +23,17 @@ _LSTM_MODEL = os.path.join(_ROOT, "ai_models", "lstm_model.h5")
 
 sys.path.append(_ROOT)
 
+# ── Gemini LLM (graceful fallback if not installed) ─────────────────────────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+try:
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+    _GEMINI_MODEL = genai.GenerativeModel("gemini-1.5-flash")
+    GEMINI_AVAILABLE = True
+except Exception:
+    GEMINI_AVAILABLE = False
+    _GEMINI_MODEL = None
+
 # ── AI model imports (graceful fallback) ────────────────────────────────────
 try:
     from ai_models.anomaly_detection import LeakDetector
@@ -64,7 +75,7 @@ except Exception:
 # ── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AquaMind AI — Smart Water Management",
-    page_icon=None,
+    page_icon="💧",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -100,6 +111,29 @@ st.markdown(f"""
 section[data-testid="stSidebar"] {{ background: #0f172a !important; }}
 section[data-testid="stSidebar"] * {{ color: #e2e8f0 !important; }}
 section[data-testid="stSidebar"] label {{ color: #94a3b8 !important; }}
+section[data-testid="stSidebar"] .stButton > button {{
+    background: #1e293b !important; color: #e2e8f0 !important;
+    border: 1px solid #334155 !important; border-radius: 8px !important;
+}}
+section[data-testid="stSidebar"] .stButton > button:hover {{
+    background: #334155 !important; color: #f1f5f9 !important;
+}}
+
+/* ── Hide the 'keyboard_double_arrow' Material icon text on the sidebar toggle ── */
+button[data-testid="baseButton-headerNoPadding"] span[data-testid="stIconMaterial"] {{
+    display: none !important;
+}}
+/* Show a clean chevron arrow instead */
+button[data-testid="baseButton-headerNoPadding"]::after {{
+    content: "‹";
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #94a3b8;
+    line-height: 1;
+}}
+[data-testid="stSidebarCollapsedControl"] button[data-testid="baseButton-headerNoPadding"]::after {{
+    content: "›";
+}}
 
 /* ── General text ── */
 p, span, div, label, h1, h2, h3, h4, li {{
@@ -174,8 +208,9 @@ p, span, div, label, h1, h2, h3, h4, li {{
 
 /* ── Architecture nodes ── */
 .arch-node {{
-    background: #1e293b; color: white; border-radius: 10px;
+    background: {"#1e293b" if _D else "#f1f5f9"}; color: {"white" if _D else "#0f172a"}; border-radius: 10px;
     padding: 0.8rem 1.2rem; text-align: center; font-weight: 600; font-size: 0.9rem;
+    border: 1px solid {"#334155" if _D else "#e2e8f0"};
 }}
 
 /* ── Health score ── */
@@ -332,10 +367,22 @@ def demo_sensor_values(rng_seed: int = None) -> dict:
 
 def _sparkline(values: list, color: str = "#0ea5e9", height: int = 60) -> go.Figure:
     """Tiny inline trend line for KPI cards."""
+    def _hex_to_rgba(hex_color: str, alpha: float = 0.15) -> str:
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
+    if color.startswith("#"):
+        fill = _hex_to_rgba(color, 0.15)
+    elif "rgb" in color:
+        fill = color.replace("rgb(", "rgba(").replace(")", ",0.15)")
+    else:
+        fill = "rgba(14,165,233,0.15)"
+
     fig = go.Figure(go.Scatter(
         y=values, mode="lines",
         line=dict(color=color, width=2),
-        fill="tozeroy", fillcolor=color.replace(")", ",0.15)").replace("rgb", "rgba") if "rgb" in color else color + "26",
+        fill="tozeroy", fillcolor=fill,
     ))
     fig.update_layout(
         height=height, margin=dict(l=0, r=0, t=0, b=0),
@@ -453,6 +500,34 @@ def generate_timeline(df: pd.DataFrame, anomaly: bool) -> list:
                    "icon": "●", "text": "Historical data synced to Firestore", "color": "#64748b"})
     return events[:10]
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GEMINI HELPER
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _ask_gemini(question: str, sensor_ctx: dict, anomaly: bool) -> str:
+    """Send a question to Gemini with live sensor context injected as system prompt."""
+    if not GEMINI_AVAILABLE or _GEMINI_MODEL is None:
+        return None
+    system_prompt = f"""You are AquaMind AI, an expert water management AI assistant embedded in an IoT dashboard.
+
+Current live sensor readings:
+- Flow Rate: {sensor_ctx['flow']:.2f} L/min (normal: 10–20)
+- Pressure: {sensor_ctx['pressure']:.2f} bar (normal: 2.0–3.2)
+- pH: {sensor_ctx['ph']:.2f} (safe: 6.5–8.5)
+- Turbidity: {sensor_ctx['turbidity']:.2f} NTU (safe: <5)
+- Temperature: {sensor_ctx['temperature']:.2f} °C (safe: 15–30)
+- AI Anomaly Detected: {'YES — possible leak or fault' if anomaly else 'NO — all clear'}
+
+Answer the user's question concisely (2–4 sentences) using the sensor data above.
+Be specific with numbers. Sound like an expert water engineer, not a chatbot.
+Do NOT repeat the question. Do NOT use markdown headers. Plain paragraphs only."""
+    try:
+        response = _GEMINI_MODEL.generate_content(f"{system_prompt}\n\nQuestion: {question}")
+        return response.text.strip()
+    except Exception as e:
+        return f"Gemini unavailable: {e}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -612,7 +687,7 @@ def render_mission_control(df, latest, anomaly, health_score, alerts):
                 <div style="font-weight:700;color:{_TXT};">{param}: {val:.2f} {unit}
                     &nbsp; {conf_html}
                 </div>
-                <div style="color:#475569;font-size:0.85rem;margin-top:0.3rem;">{reason}</div>
+                <div style="color:{_T2};font-size:0.85rem;margin-top:0.3rem;">{reason}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -729,7 +804,7 @@ def render_mission_control(df, latest, anomaly, health_score, alerts):
 
 
 
-def render_live_dashboard(df, latest, anomaly, alerts):
+def render_live_dashboard(df, latest, anomaly, alerts, health_score=100):
     """Tab 2 — Live Dashboard"""
     _D   = st.session_state.get("dark_mode", False)
     _TXT = "#f1f5f9" if _D else "#0f172a"
@@ -829,7 +904,7 @@ def render_live_dashboard(df, latest, anomaly, alerts):
             st.markdown(f"""
             <div class="metric-card" style="text-align:center;">
                 <div style="font-size:1.6rem;font-weight:800;color:#0ea5e9;">{value}</div>
-                <div style="color:#64748b;font-size:0.85rem;margin-top:0.3rem;">{label}</div>
+                <div style="color:{_T2};font-size:0.85rem;margin-top:0.3rem;">{label}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -917,6 +992,73 @@ def render_live_dashboard(df, latest, anomaly, alerts):
         """
     components.html(dt_html, height=220)
 
+    # ── Zone Health Map ────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Zone Health Map — Real-Time Overview</div>', unsafe_allow_html=True)
+
+    # Representative coordinates for 5 zones (demo locations near Hyderabad, India)
+    zone_data = {
+        "Zone-1 Main Supply":   {"lat": 17.385, "lon": 78.486, "score": min(100, int(health_score * 1.0)),  "flow": latest["flow"],         "ph": latest["ph"]},
+        "Zone-2 Residential":   {"lat": 17.412, "lon": 78.510, "score": min(100, int(health_score * 0.93)), "flow": latest["flow"] * 0.85,  "ph": latest["ph"] + 0.1},
+        "Zone-3 Industrial":    {"lat": 17.360, "lon": 78.472, "score": min(100, int(health_score * 0.87)), "flow": latest["flow"] * 1.20,  "ph": latest["ph"] - 0.15},
+        "Zone-4 Agricultural":  {"lat": 17.440, "lon": 78.495, "score": min(100, int(health_score * 0.95)), "flow": latest["flow"] * 0.70,  "ph": latest["ph"] + 0.05},
+        "Zone-5 Municipal":     {"lat": 17.370, "lon": 78.530, "score": min(100, int(health_score * 0.91)), "flow": latest["flow"] * 0.90,  "ph": latest["ph"] - 0.05},
+    }
+
+    zone_df = pd.DataFrame([
+        {
+            "Zone":    name,
+            "Lat":     v["lat"],
+            "Lon":     v["lon"],
+            "Score":   v["score"],
+            "Flow":    round(v["flow"], 2),
+            "pH":      round(v["ph"], 2),
+            "Status":  "Critical" if v["score"] < 60 else ("Warning" if v["score"] < 80 else "Healthy"),
+            "Color":   "#ef4444" if v["score"] < 60 else ("#f59e0b" if v["score"] < 80 else "#10b981"),
+        }
+        for name, v in zone_data.items()
+    ])
+
+    fig_map = go.Figure()
+    for _, row in zone_df.iterrows():
+        fig_map.add_trace(go.Scattermapbox(
+            lat=[row["Lat"]], lon=[row["Lon"]],
+            mode="markers+text",
+            marker=dict(size=28, color=row["Color"], opacity=0.9),
+            text=[f"{row['Score']}"],
+            textfont=dict(size=11, color="white", family="Inter"),
+            textposition="middle center",
+            hovertemplate=(
+                f"<b>{row['Zone']}</b><br>"
+                f"Health Score: {row['Score']}/100<br>"
+                f"Status: {row['Status']}<br>"
+                f"Flow: {row['Flow']} L/min<br>"
+                f"pH: {row['pH']}<extra></extra>"
+            ),
+            name=row["Zone"],
+            showlegend=True,
+        ))
+
+    fig_map.update_layout(
+        mapbox=dict(
+            style="carto-positron",
+            center=dict(lat=17.400, lon=78.500),
+            zoom=11,
+        ),
+        height=420,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.01,
+            bgcolor="rgba(255,255,255,0.8)", bordercolor="#e2e8f0", borderwidth=1,
+        ),
+    )
+    st.plotly_chart(fig_map, use_container_width=True)
+
+    # Zone summary table
+    display_df = zone_df[["Zone", "Score", "Status", "Flow", "pH"]].copy()
+    display_df.columns = ["Zone", "Health Score", "Status", "Flow (L/min)", "pH"]
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
 
 
 
@@ -1002,13 +1144,13 @@ def render_ai_advisor(df, latest, anomaly, detector, engine):
         st.markdown(f"""
         <div class="ai-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <div style="font-weight:700;font-size:1rem;color:#0f172a;">
+                <div style="font-weight:700;font-size:1rem;color:{_TXT};">
                     {item['title']}
                 </div>
                 <span class="{conf_cls}" style="font-size:0.75rem;">{item['confidence']} CONFIDENCE</span>
             </div>
-            <div style="color:#1e293b;margin:0.4rem 0 0.3rem;">{item['message']}</div>
-            <div style="color:#64748b;font-size:0.82rem;margin-bottom:0.3rem;">
+            <div style="color:{_TXT};margin:0.4rem 0 0.3rem;">{item['message']}</div>
+            <div style="color:{_T2};font-size:0.82rem;margin-bottom:0.3rem;">
                 <strong>Reasoning:</strong> {item['reasoning']}
             </div>
             <div style="color:#0ea5e9;font-size:0.85rem;font-weight:600;">
@@ -1017,42 +1159,58 @@ def render_ai_advisor(df, latest, anomaly, detector, engine):
         </div>
         """, unsafe_allow_html=True)
 
-    # ── AI Copilot ──────────────────────────────────────────────────────────
-    st.markdown('<div class="section-header">AI Copilot — Ask About Your Water Data</div>', unsafe_allow_html=True)
-
-    copilot_qa = {
-        "What is the current water quality status?":
-            f"Current water quality is {'good' if ph_ok and turb_ok else 'concerning'}. "
-            f"pH={latest['ph']:.2f} ({'normal' if ph_ok else 'out of safe range'}), "
-            f"Turbidity={latest['turbidity']:.2f} NTU ({'acceptable' if turb_ok else 'high'}).",
-        "Is there a leak in the system?":
-            f"{'AI has flagged an anomaly — possible leak. Confidence: HIGH. Inspect Zone 2 pipeline.' if anomaly else 'No leak detected. Flow and pressure readings are within expected bounds.'}",
-        "When is peak water demand expected?":
-            "Based on historical patterns, peak demand occurs between 17:00–20:00. "
-            "Flow rate typically rises 15–35% above baseline during this window.",
-        "How can I reduce water waste?":
-            "1. Shift irrigation to off-peak hours (05:00–07:00 or 21:00–23:00). "
-            "2. Fix drip lines if turbidity is elevated. "
-            "3. Enable pressure regulation to prevent over-irrigation. "
-            "Estimated savings: 200–400 L/day.",
-        "What is the pH trend?":
-            f"Current pH is {latest['ph']:.2f}. "
-            f"{'Stable and within safe range (6.5–8.5).' if ph_ok else 'Outside safe range — check dosing system immediately.'}",
-    }
-
-    question = st.selectbox(
-        "Choose a question or type your own below:",
-        ["Select a question…"] + list(copilot_qa.keys()),
-        key="copilot_select",
+    # ── AI Copilot (Gemini-powered) ─────────────────────────────────────────
+    _D_cop = st.session_state.get("dark_mode", False)
+    gemini_badge = (
+        '<span style="background:#4285f4;color:white;font-size:0.7rem;font-weight:700;'
+        'padding:0.15rem 0.5rem;border-radius:99px;margin-left:0.5rem;">Powered by Gemini</span>'
+        if GEMINI_AVAILABLE else
+        '<span style="background:#64748b;color:white;font-size:0.7rem;font-weight:700;'
+        'padding:0.15rem 0.5rem;border-radius:99px;margin-left:0.5rem;">Rule-based fallback</span>'
     )
-    custom_q = st.text_input("Or ask a custom question:", key="copilot_custom")
+    st.markdown(
+        f'<div class="section-header">AI Copilot — Ask About Your Water Data {gemini_badge}</div>',
+        unsafe_allow_html=True,
+    )
 
-    if st.button("Ask AI Copilot", type="primary"):
-        q = custom_q.strip() if custom_q.strip() else question
-        if q and q != "Select a question…":
-            answer = copilot_qa.get(q)
-            if answer is None:
-                # Context-aware generic response using live sensor values
+    preset_questions = [
+        "Select a question…",
+        "What is the current water quality status?",
+        "Is there a leak in the system?",
+        "When is peak water demand expected?",
+        "How can I reduce water waste?",
+        "What is the pH trend?",
+        "What maintenance should I do this week?",
+        "What would happen if pressure drops below 1.5 bar?",
+        "Is the system ready for peak irrigation season?",
+    ]
+
+    question = st.selectbox("Choose a preset question or type your own below:", preset_questions, key="copilot_select")
+    custom_q = st.text_input("Or type any question about your water system:", key="copilot_custom",
+                              placeholder="e.g. Why is my turbidity spiking at night?")
+
+    col_ask, col_clear = st.columns([3, 1])
+    ask_btn   = col_ask.button("Ask AI Copilot", type="primary", use_container_width=True)
+    clear_btn = col_clear.button("Clear", use_container_width=True)
+    if clear_btn:
+        st.session_state.pop("_copilot_answer", None)
+        st.session_state.pop("_copilot_q", None)
+
+    if ask_btn:
+        q = custom_q.strip() if custom_q.strip() else (question if question != "Select a question…" else "")
+        if not q:
+            st.warning("Please select or type a question first.")
+        else:
+            with st.spinner("AquaMind AI is thinking…"):
+                # Try Gemini first
+                gemini_answer = _ask_gemini(q, latest, anomaly)
+
+            if gemini_answer:
+                st.session_state["_copilot_answer"] = gemini_answer
+                st.session_state["_copilot_q"]      = q
+                st.session_state["_copilot_source"]  = "gemini"
+            else:
+                # Rule-based fallback
                 issues = []
                 if not ph_ok:
                     issues.append(f"pH is {latest['ph']:.2f} ({'too low' if latest['ph'] < 6.5 else 'too high'})")
@@ -1061,30 +1219,44 @@ def render_ai_advisor(df, latest, anomaly, detector, engine):
                 if not press_ok:
                     issues.append(f"pressure is {'low' if latest['pressure'] < 1.5 else 'high'} at {latest['pressure']:.2f} bar")
                 if anomaly:
-                    issues.append("an AI anomaly has been detected (possible leak)")
+                    issues.append("an AI anomaly has been detected — possible leak")
                 if issues:
-                    answer = (
-                        f"Based on your question and current sensor readings, I can see: "
-                        f"{'; '.join(issues)}. "
-                        f"Current flow is {latest['flow']:.1f} L/min, pressure {latest['pressure']:.2f} bar. "
-                        f"I recommend checking the Live Dashboard and AI Advisor tabs for detailed guidance."
+                    fallback = (
+                        f"Based on current sensor data: {'; '.join(issues)}. "
+                        f"Flow={latest['flow']:.1f} L/min, pressure={latest['pressure']:.2f} bar. "
+                        "Check the Live Dashboard and AI Advisor tabs for detailed guidance."
                     )
                 else:
-                    answer = (
-                        f"All systems appear normal. Flow={latest['flow']:.1f} L/min, "
+                    fallback = (
+                        f"All systems normal. Flow={latest['flow']:.1f} L/min, "
                         f"pressure={latest['pressure']:.2f} bar, pH={latest['ph']:.2f}, "
-                        f"turbidity={latest['turbidity']:.1f} NTU. "
-                        f"No anomalies detected. Continue monitoring as scheduled."
+                        f"turbidity={latest['turbidity']:.1f} NTU. No anomalies detected."
                     )
-            st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);
-                        border-radius:12px;padding:1.2rem;border-left:4px solid #0ea5e9;margin-top:0.5rem;">
-                <div style="font-weight:700;color:#0369a1;margin-bottom:0.4rem;">AquaMind AI</div>
-                <div style="color:#0f172a;line-height:1.6;">{answer}</div>
+                st.session_state["_copilot_answer"] = fallback
+                st.session_state["_copilot_q"]      = q
+                st.session_state["_copilot_source"]  = "fallback"
+
+    if "_copilot_answer" in st.session_state:
+        source  = st.session_state.get("_copilot_source", "fallback")
+        src_lbl = "Gemini 1.5 Flash" if source == "gemini" else "Rule-based Engine"
+        src_clr = "#4285f4"          if source == "gemini" else "#64748b"
+        q_shown = st.session_state.get("_copilot_q", "")
+        bg_grad = "linear-gradient(135deg,#eff6ff,#dbeafe)" if not _D_cop else "linear-gradient(135deg,#1e293b,#0f172a)"
+        txt_clr = "#0f172a" if not _D_cop else "#e2e8f0"
+        st.markdown(f"""
+        <div style="background:{bg_grad};border-radius:14px;padding:1.4rem;
+                    border-left:4px solid {src_clr};margin-top:0.8rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+                <div style="font-weight:800;color:{src_clr};font-size:1rem;">AquaMind AI</div>
+                <span style="background:{src_clr};color:white;font-size:0.7rem;font-weight:700;
+                      padding:0.15rem 0.5rem;border-radius:99px;">{src_lbl}</span>
             </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.warning("Please select or type a question first.")
+            <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.5rem;font-style:italic;">
+                Q: {q_shown}
+            </div>
+            <div style="color:{txt_clr};line-height:1.7;font-size:0.95rem;">{st.session_state['_copilot_answer']}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── Recommendation Engine ───────────────────────────────────────────────
     if engine is not None:
@@ -1118,8 +1290,8 @@ def render_ai_advisor(df, latest, anomaly, detector, engine):
                     st.markdown(f"""
                     <div class="ai-card" style="border-left-color:{clr};">
                         <div style="font-weight:700;color:{clr};">[{pri}] {r.get('category','').replace('_',' ').title()}</div>
-                        <div style="color:#1e293b;margin:0.3rem 0;">{r['message']}</div>
-                        <div><strong>Action:</strong> {r['recommended_action']}</div>
+                        <div style="color:{_TXT};margin:0.3rem 0;">{r['message']}</div>
+                        <div style="color:{_TXT};"><strong>Action:</strong> {r['recommended_action']}</div>
                         <div style="color:#10b981;font-weight:600;margin-top:0.3rem;">{r['estimated_impact']}</div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1522,9 +1694,11 @@ def render_architecture():
     _SHD = "rgba(0,0,0,0.35)" if _D else "rgba(0,0,0,0.08)"
     st.markdown('<div class="section-header">System Architecture Overview</div>', unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="background:#0f172a;border-radius:16px;padding:2rem;color:white;">
-        <div style="text-align:center;margin-bottom:1.5rem;font-weight:700;font-size:1.1rem;color:#94a3b8;">
+    arch_bg  = "#0f172a" if _D else "#1e293b"
+    arch_sub = "#94a3b8"
+    st.markdown(f"""
+    <div style="background:{arch_bg};border-radius:16px;padding:2rem;color:white;">
+        <div style="text-align:center;margin-bottom:1.5rem;font-weight:700;font-size:1.1rem;color:{arch_sub};">
             IoT-to-AI Cloud Pipeline
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
@@ -1600,8 +1774,8 @@ def render_architecture():
     for name, clr, desc in components:
         st.markdown(f"""
         <div class="ai-card" style="border-left-color:{clr};">
-        <div style="font-weight:700;font-size:1rem;color:#0f172a;margin-bottom:0.4rem;">{name}</div>
-            <div style="color:#475569;font-size:0.9rem;line-height:1.6;">{desc}</div>
+        <div style="font-weight:700;font-size:1rem;color:{_TXT};margin-bottom:0.4rem;">{name}</div>
+            <div style="color:{_T2};font-size:0.9rem;line-height:1.6;">{desc}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1734,8 +1908,8 @@ def render_scenario_lab(latest):
             with col:
                 st.markdown(f"""
                 <div class="kpi-card">
-                    <div style="font-size:0.75rem;color:#64748b;font-weight:600;text-transform:uppercase;">{name}</div>
-                    <div style="font-size:2rem;font-weight:800;color:#0f172a;">{pred:.2f} {unit}</div>
+                    <div style="font-size:0.75rem;color:{_T2};font-weight:600;text-transform:uppercase;">{name}</div>
+                    <div style="font-size:2rem;font-weight:800;color:{_TXT};">{pred:.2f} {unit}</div>
                     <div style="font-size:0.85rem;color:{delta_color};font-weight:600;">
                         {delta_str} {unit} vs current
                     </div>
@@ -1748,7 +1922,7 @@ def render_scenario_lab(latest):
             icon = "CRITICAL" if scen["risk"] == "CRITICAL" else ("WARNING" if scen["risk"] == "HIGH" else "INFO")
             st.markdown(f"""
             <div class="ai-card" style="border-left-color:{scen['color']};">
-                <div style="color:#0f172a;"><span style="color:{scen['color']};font-weight:700;font-size:0.75rem;margin-right:0.5rem;">{icon}</span><strong>Outcome {i}:</strong> {outcome}</div>
+                <div style="color:{_TXT};"><span style="color:{scen['color']};font-weight:700;font-size:0.75rem;margin-right:0.5rem;">{icon}</span><strong>Outcome {i}:</strong> {outcome}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1899,10 +2073,13 @@ def main():
 
     # ── Anomaly visual alert banner ───────────────────────────────────────────
     if anomaly:
-        st.markdown("""
-        <div class="anomaly-pulse" style="background:#450a0a;border-radius:10px;
-             padding:0.8rem 1.2rem;margin-bottom:0.5rem;color:#fca5a5;font-weight:700;
-             font-size:1rem;text-align:center;">
+        _banner_bg  = "#450a0a" if _D else "#fef2f2"
+        _banner_txt = "#fca5a5" if _D else "#991b1b"
+        _banner_bdr = "#ef4444"
+        st.markdown(f"""
+        <div class="anomaly-pulse" style="background:{_banner_bg};border-radius:10px;
+             padding:0.8rem 1.2rem;margin-bottom:0.5rem;color:{_banner_txt};font-weight:700;
+             font-size:1rem;text-align:center;border:2px solid {_banner_bdr};">
             CRITICAL ANOMALY DETECTED — AI has flagged an active leak or fault. Scroll to Live Dashboard for details.
         </div>
         """, unsafe_allow_html=True)
@@ -1964,7 +2141,7 @@ def main():
     with tab1:
         render_mission_control(df, latest_dict, anomaly, health_score, alerts)
     with tab2:
-        render_live_dashboard(df, latest_dict, anomaly, alerts)
+        render_live_dashboard(df, latest_dict, anomaly, alerts, health_score)
     with tab3:
         render_ai_advisor(df, latest_dict, anomaly, detector, engine)
     with tab4:
