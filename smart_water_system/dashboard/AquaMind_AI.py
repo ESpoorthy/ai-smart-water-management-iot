@@ -1472,7 +1472,7 @@ def render_analytics(df, latest, forecaster):
         st.markdown('<div class="section-header">Model Training</div>', unsafe_allow_html=True)
         t1, t2 = st.columns(2)
         with t1:
-            if st.button("Train Demand Forecaster", use_container_width=True):
+            if st.button("Train Demand Forecaster", use_container_width=True, key="analytics_train_forecaster"):
                 if forecaster:
                     with st.spinner("Training…"):
                         ok = forecaster.train(epochs=30)
@@ -1480,7 +1480,7 @@ def render_analytics(df, latest, forecaster):
                 else:
                     st.error("Forecaster module not available.")
         with t2:
-            if st.button("Train Leak Detector", use_container_width=True):
+            if st.button("Train Leak Detector", use_container_width=True, key="analytics_train_detector"):
                 detector = get_leak_detector()
                 if detector:
                     with st.spinner("Training…"):
@@ -2001,14 +2001,14 @@ def main():
         st.markdown("**AI Model Training**")
         _det_sb  = get_leak_detector()
         _fc_sb   = get_forecaster()
-        if st.button("Train Leak Detector", use_container_width=True):
+        if st.button("Train Leak Detector", use_container_width=True, key="sidebar_train_detector"):
             if _det_sb:
                 with st.spinner("Training leak detector…"):
                     ok = _det_sb.train()
                 st.success("Leak detector trained!") if ok else st.warning("Need 50+ readings.")
             else:
                 st.error("Leak detector not available.")
-        if st.button("Train Forecaster", use_container_width=True):
+        if st.button("Train Forecaster", use_container_width=True, key="sidebar_train_forecaster"):
             if _fc_sb:
                 with st.spinner("Training forecaster…"):
                     ok = _fc_sb.train(epochs=30)
