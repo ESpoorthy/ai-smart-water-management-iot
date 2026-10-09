@@ -10,6 +10,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import sys
 import os
+import json
 import numpy as np
 import random
 import time
@@ -1018,41 +1019,60 @@ def render_live_dashboard(df, latest, anomaly, alerts, health_score=100):
         for name, v in zone_data.items()
     ])
 
-    fig_map = go.Figure()
-    for _, row in zone_df.iterrows():
-        fig_map.add_trace(go.Scattermapbox(
-            lat=[row["Lat"]], lon=[row["Lon"]],
-            mode="markers+text",
-            marker=dict(size=28, color=row["Color"], opacity=0.9),
-            text=[f"{row['Score']}"],
-            textfont=dict(size=11, color="white", family="Inter"),
-            textposition="middle center",
-            hovertemplate=(
-                f"<b>{row['Zone']}</b><br>"
-                f"Health Score: {row['Score']}/100<br>"
-                f"Status: {row['Status']}<br>"
-                f"Flow: {row['Flow']} L/min<br>"
-                f"pH: {row['pH']}<extra></extra>"
-            ),
-            name=row["Zone"],
-            showlegend=True,
-        ))
-
-    fig_map.update_layout(
-        mapbox=dict(
-            style="carto-positron",
-            center=dict(lat=17.400, lon=78.500),
-            zoom=11,
-        ),
-        height=420,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.01,
-            bgcolor="rgba(255,255,255,0.8)", bordercolor="#e2e8f0", borderwidth=1,
-        ),
+    st.caption(
+        "Illustrative demo zones near Hyderabad. Marker values use the dashboard's "
+        "demo/model readings; they are not verified municipal locations or live utility data."
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    map_zones = zone_df[["Zone", "Lat", "Lon", "Score", "Flow", "pH", "Status", "Color"]].to_dict(orient="records")
+    map_zones_json = json.dumps(map_zones, separators=(",", ":")).replace("</", "<\\/")
+    zone_map_html = f"""<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+ integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+html,body,#zone-map{{height:100%;margin:0}}
+#zone-map{{font-family:Inter,system-ui,sans-serif;border-radius:10px;overflow:hidden}}
+.zone-score-marker{{background:transparent;border:0}}
+.zone-score-marker span{{display:flex;width:34px;height:34px;align-items:center;justify-content:center;
+ border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px #0f172a55;color:#fff;font-weight:800;font-size:11px}}
+.zone-legend{{background:rgba(255,255,255,.94);padding:8px 10px;border-radius:8px;
+ box-shadow:0 1px 6px #0f172a33;line-height:1.65;font-size:11px}}
+.zone-legend i{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}}
+.tile-fallback{{position:absolute;z-index:1000;top:10px;left:50px;right:10px;padding:9px 12px;
+ background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:7px;font:12px system-ui}}
+</style></head><body><div id="zone-map" role="img" aria-label="Illustrative zone health map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const zones={map_zones_json};
+const map=L.map('zone-map',{{scrollWheelZoom:false}}).setView([17.400,78.500],11);
+const tiles=L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{
+ maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}}).addTo(map);
+let tileNoticeShown=false;
+tiles.on('tileerror',()=>{{
+ if(tileNoticeShown)return; tileNoticeShown=true;
+ const note=document.createElement('div'); note.className='tile-fallback';
+ note.textContent='Map tiles could not load. Check your internet connection; zone summary remains available.';
+ document.getElementById('zone-map').appendChild(note);
+}});
+const legend=L.control({{position:'topleft'}});
+legend.onAdd=()=>{{const box=L.DomUtil.create('div','zone-legend');
+ box.innerHTML=zones.map(z=>'<div><i style="background:'+z.Color+'"></i>'+z.Zone+'</div>').join('');
+ return box;}}; legend.addTo(map);
+zones.forEach(z=>{{
+ const icon=L.divIcon({{className:'zone-score-marker',html:'<span style="background:'+z.Color+'">'+z.Score+'</span>',iconSize:[38,38],iconAnchor:[19,19]}});
+ const marker=L.marker([z.Lat,z.Lon],{{icon}}).addTo(map);
+ marker.bindTooltip(z.Zone,{{direction:'top',offset:[0,-14]}});
+ const popup=document.createElement('div');
+ const title=document.createElement('strong'); title.textContent=z.Zone; popup.appendChild(title);
+ const details=document.createElement('div');
+ details.textContent='Health score: '+z.Score+'/100 · '+z.Status+' | Flow: '+z.Flow+' L/min | pH: '+z.pH;
+ popup.appendChild(details); marker.bindPopup(popup);
+}});
+</script></body></html>"""
+    components.html(zone_map_html, height=420, scrolling=False)
 
     # Zone summary table
     display_df = zone_df[["Zone", "Score", "Status", "Flow", "pH"]].copy()
