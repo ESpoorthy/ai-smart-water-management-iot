@@ -365,3 +365,15 @@ For questions or issues, please open a GitHub issue.
 ---
 
 **Built with ❤️ for sustainable water management**
+
+
+## 💬 Water-Wise AI Bot
+
+The dashboard includes **Water-Wise AI Bot** as a dedicated Streamlit multipage section under the sidebar. It brings in the WaterWise AI educational chatbot, its curated knowledge centre, utility glossary, suggested questions, conversation history, Gemini-powered explanations, and safety guardrails.
+
+- The chatbot is informational only; it does not access live municipal telemetry, predict local supply times, register complaints, or control water infrastructure.
+- Configure `GEMINI_API_KEY` in the deployment's environment variables or Streamlit secrets to enable live Gemini responses. Without a key, curated offline educational answers and the knowledge centre remain available.
+- Optional model override: `GEMINI_MODEL` (defaults to WaterWise's configured model).
+- Dependencies for the merged feature are listed in `requirements.txt` and include `google-genai` and `python-dotenv`.
+
+The original standalone chatbot repository remains unchanged: https://github.com/ESpoorthy/WaterWise-AI-Explainer
