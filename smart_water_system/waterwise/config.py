@@ -27,15 +27,27 @@ ALLOWED_MODELS = (
 
 
 def _get_streamlit_secret(key: str) -> Optional[str]:
-    """Safely inspect Streamlit secrets if running within Streamlit context."""
+    """Read Streamlit secrets only when a secrets.toml file actually exists.
+
+    On Render, accessing st.secrets without a secrets.toml raises a
+    StreamlitSecretNotFoundError. Check Streamlit's standard file locations
+    first so deployments using environment variables can run cleanly.
+    """
+    secret_paths = (
+        os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml"),
+        os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+    )
+    if not any(os.path.isfile(path) for path in secret_paths):
+        return None
+
     try:
         import streamlit as st
-        if hasattr(st, "secrets") and key in st.secrets:
-            val = st.secrets[key]
-            if isinstance(val, str) and val.strip():
-                return val.strip()
+        value = st.secrets.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     except Exception:
-        pass
+        # Missing or unreadable secrets should fall back to environment/defaults.
+        return None
     return None
 
 
