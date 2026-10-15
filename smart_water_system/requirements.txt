@@ -7,6 +7,7 @@ scipy>=1.11,<2.0
 scikit-learn>=1.4,<2.0
 
 # Dashboard & visualisation
+pyarrow>=14,<20  # NumPy 1.x compatibility; newest PyArrow releases require NumPy 2.x
 streamlit>=1.35,<2.0
 plotly>=5.18,<6.0
 
