@@ -27,10 +27,10 @@ from waterwise import ui
 ui.render_head()
 
 # 3. Initialize Session State
-if waterwise_messages not in st.session_state:
+if "waterwise_messages" not in st.session_state:
     st.session_state.waterwise_messages = []
 
-if waterwise_pending_query not in st.session_state:
+if "waterwise_pending_query" not in st.session_state:
     st.session_state.waterwise_pending_query = None
 
 # Retrieve system configuration
